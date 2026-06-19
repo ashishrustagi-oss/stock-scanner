@@ -77,19 +77,162 @@ WEIGHT_RELATIVE_STRENGTH = 15
 
 assert WEIGHT_OBV + WEIGHT_MACD_WEEKLY + WEIGHT_MACD_DAILY + WEIGHT_TREND + WEIGHT_RELATIVE_STRENGTH == 100
 
-# Sub-weights within the "Trend" bucket (Supertrend slow + fast + EMA20)
-TREND_SUBWEIGHT_SUPERTREND_SLOW = 0.5
-TREND_SUBWEIGHT_SUPERTREND_FAST = 0.25
-TREND_SUBWEIGHT_EMA20 = 0.25
+# Sub-weights within the "Trend" bucket
+# Now includes Weekly Supertrend and Near-52w-High
+TREND_SUBWEIGHT_SUPERTREND_SLOW    = 0.30   # daily supertrend (10,3)
+TREND_SUBWEIGHT_SUPERTREND_FAST    = 0.10   # daily supertrend (2,1)
+TREND_SUBWEIGHT_EMA20              = 0.15   # price vs EMA20
+TREND_SUBWEIGHT_SUPERTREND_WEEKLY  = 0.30   # weekly supertrend (10,3) — higher timeframe confirmation
+TREND_SUBWEIGHT_NEAR_52W_HIGH      = 0.15   # price within 10% of 52-week high
+
+assert abs(
+    TREND_SUBWEIGHT_SUPERTREND_SLOW + TREND_SUBWEIGHT_SUPERTREND_FAST +
+    TREND_SUBWEIGHT_EMA20 + TREND_SUBWEIGHT_SUPERTREND_WEEKLY +
+    TREND_SUBWEIGHT_NEAR_52W_HIGH - 1.0
+) < 1e-9, "Trend sub-weights must sum to 1.0"
+
+# Sub-weights within the "OBV" bucket
+# Now includes OBV 52-week range position
+OBV_SUBWEIGHT_SLOPE_20D     = 0.35   # short-term OBV momentum
+OBV_SUBWEIGHT_SLOPE_50D     = 0.30   # medium-term OBV momentum
+OBV_SUBWEIGHT_52W_RANGE     = 0.35   # OBV position in its own 52-week range
+
+assert abs(
+    OBV_SUBWEIGHT_SLOPE_20D + OBV_SUBWEIGHT_SLOPE_50D + OBV_SUBWEIGHT_52W_RANGE - 1.0
+) < 1e-9, "OBV sub-weights must sum to 1.0"
+
+# Sub-weights within the "Weekly MACD" bucket
+# Now includes the binary positive/negative flag alongside the ranked histogram
+MACD_WEEKLY_SUBWEIGHT_RANKED   = 0.60   # cross-sectional rank of histogram magnitude
+MACD_WEEKLY_SUBWEIGHT_POSITIVE = 0.40   # binary: histogram > 0 (0 or 100)
+
+assert abs(MACD_WEEKLY_SUBWEIGHT_RANKED + MACD_WEEKLY_SUBWEIGHT_POSITIVE - 1.0) < 1e-9
+
+# Threshold for "near 52-week high" (percentage below high, expressed as positive number)
+NEAR_52W_HIGH_THRESHOLD_PCT = 10.0
+
+# Weekly Supertrend parameters (same period/multiplier as daily slow by default)
+SUPERTREND_WEEKLY = dict(period=10, multiplier=3)
 
 # ----------------------------------------------------------------------------
-# OUTPUT CATEGORIES
+# OUTPUT CATEGORIES (original composite-score system — unchanged)
 # ----------------------------------------------------------------------------
 ELITE_THRESHOLD = 85
 EMERGING_THRESHOLD_LOW = 75
 EMERGING_THRESHOLD_HIGH = 85
 EXIT_THRESHOLD = 50
 TOP_N = 20
+
+# ════════════════════════════════════════════════════════════════════════════
+# ELITE COMPOUNDER EARLY DETECTION SYSTEM
+# Everything below is ADDITIVE — it runs alongside the original composite
+# score above and does not change or remove anything in it.
+# ════════════════════════════════════════════════════════════════════════════
+
+# --- Lookback windows (in trading days) used across the early-detection modules ---
+WEEKS_13_IN_DAYS = 65
+WEEKS_26_IN_DAYS = 130
+WEEKS_52_IN_DAYS = 252
+
+# --- Early MACD module ---
+MACD_EARLY_LOOKBACK_DAYS = 3   # how many recent bars to scan for a fresh bullish crossover
+
+# --- Volatility Compression module ---
+ATR_PERIOD = 14
+VOLATILITY_COMPRESSION_LOOKBACK_DAYS = 252       # 'last year' for the percentile calc
+VOLATILITY_COMPRESSION_PERCENTILE_THRESHOLD = 25  # TRUE if in the lowest 25% of the year
+
+# --- Early EMA Structure module ---
+EMA10_PERIOD = 10
+EMA20_SLOPE_WINDOW = 10   # bars used to judge whether EMA20 itself is sloping up
+
+# --- Near Breakout module ---
+NEAR_BREAKOUT_THRESHOLD_PCT = 15.0   # distinct from the 10% used in the base Trend bucket
+
+# --- Sector benchmark mapping for RS_SECTOR ---
+# US: GICS Sector -> SPDR sector ETF (reliable, well-established 1:1 mapping)
+SECTOR_INDEX_MAP_US = {
+    "Information Technology":  "XLK",
+    "Health Care":              "XLV",
+    "Financials":                "XLF",
+    "Consumer Discretionary":    "XLY",
+    "Communication Services":    "XLC",
+    "Industrials":                "XLI",
+    "Consumer Staples":           "XLP",
+    "Energy":                      "XLE",
+    "Utilities":                    "XLU",
+    "Real Estate":                  "XLRE",
+    "Materials":                     "XLB",
+}
+
+# NSE: industry-label substring (case-insensitive match) -> yfinance index ticker.
+# These are best-effort — NSE sector index tickers on Yahoo Finance are not as
+# reliably documented as the US SPDR ETFs. Any ticker that fails to fetch falls
+# back automatically to the broad Nifty 50 index (see sector_data.py), and the
+# `sector_index_source` column in the output shows which stocks got a real
+# sector comparison vs. the fallback — check that column after the first run
+# and report any tickers worth fixing.
+SECTOR_INDEX_MAP_NSE = {
+    "bank":            "^NSEBANK",
+    "financial":       "^CNXFIN",
+    "it":              "^CNXIT",
+    "software":        "^CNXIT",
+    "auto":            "^CNXAUTO",
+    "pharma":          "^CNXPHARMA",
+    "healthcare":      "^CNXPHARMA",
+    "fmcg":            "^CNXFMCG",
+    "metal":           "^CNXMETAL",
+    "energy":          "^CNXENERGY",
+    "oil":             "^CNXENERGY",
+    "realty":          "^CNXREALTY",
+    "real estate":     "^CNXREALTY",
+    "media":           "^CNXMEDIA",
+    "infrastructure":  "^CNXINFRA",
+    "psu bank":        "^CNXPSUBANK",
+    "consumption":     "^CNXCONSUM",
+    "commodities":     "^CNXCMDT",
+}
+
+# --- Elite Compounder Score weights (must sum to 100) ---
+ELITE_WEIGHT_OBV_LEADERSHIP         = 20   # OBV 52w high / 13w / 26w rising
+ELITE_WEIGHT_RS_LEADERSHIP          = 20   # RS vs Nifty + Sector: 52w high / 13w / 26w rising
+ELITE_WEIGHT_MACD_EARLY             = 10   # early bullish crossover below zero
+ELITE_WEIGHT_EMA_ALIGNMENT          = 5    # EMA10>EMA20 + EMA20 sloping up
+ELITE_WEIGHT_VOLATILITY_COMPRESSION = 10   # ATR compression in lowest quartile of the year
+ELITE_WEIGHT_SUPERTREND             = 10   # existing daily Supertrend(10,3)+(2,1), rescaled
+ELITE_WEIGHT_WEEKLY_MACD            = 10   # existing weekly MACD score, rescaled
+ELITE_WEIGHT_ABOVE_EMA20            = 5    # price > EMA20
+ELITE_WEIGHT_FUNDAMENTALS           = 10   # existing fundamental qualifying filter
+
+assert (
+    ELITE_WEIGHT_OBV_LEADERSHIP + ELITE_WEIGHT_RS_LEADERSHIP + ELITE_WEIGHT_MACD_EARLY
+    + ELITE_WEIGHT_EMA_ALIGNMENT + ELITE_WEIGHT_VOLATILITY_COMPRESSION
+    + ELITE_WEIGHT_SUPERTREND + ELITE_WEIGHT_WEEKLY_MACD + ELITE_WEIGHT_ABOVE_EMA20
+    + ELITE_WEIGHT_FUNDAMENTALS == 100
+), "Elite Compounder Score weights must sum to 100"
+
+# Within the OBV Leadership sub-score (max 20): 52w-high=10, 13w-rising=5, 26w-rising=5
+ELITE_OBV_POINTS_52W_HIGH = 10
+ELITE_OBV_POINTS_13W_RISING = 5
+ELITE_OBV_POINTS_26W_RISING = 5
+
+# Within the RS Leadership sub-score (max 20): 52w-high=10, 13w-rising=5, 26w-rising=5
+# Each of these is itself split 50/50 between the Nifty-relative and
+# Sector-relative versions of the signal, so full marks require BOTH to agree.
+ELITE_RS_POINTS_52W_HIGH = 10
+ELITE_RS_POINTS_13W_RISING = 5
+ELITE_RS_POINTS_26W_RISING = 5
+
+# Within the daily-Supertrend sub-score (max 10): weight slow vs fast supertrend
+ELITE_SUPERTREND_SUBWEIGHT_SLOW = 0.65
+ELITE_SUPERTREND_SUBWEIGHT_FAST = 0.35
+
+# --- New watchlist category thresholds (based on EliteCompounderScore, 0-100) ---
+ELITE_CATEGORY_A_THRESHOLD = 80    # Category A: Elite Compounders, score > 80
+ELITE_CATEGORY_B_LOW = 65          # Category B: Emerging Leaders, 65-80
+ELITE_CATEGORY_B_HIGH = 80
+ELITE_CATEGORY_C_LOW = 50          # Category C: Watchlist, 50-65
+ELITE_CATEGORY_C_HIGH = 65
 
 # ----------------------------------------------------------------------------
 # GOOGLE SHEETS
@@ -100,6 +243,7 @@ GOOGLE_SERVICE_ACCOUNT_JSON_PATH = os.environ.get(
 )
 
 SHEET_TABS = {
+    # Original tabs — unchanged, still produced exactly as before
     "nse_full": "NSE500_Full_Scan",
     "us_full": "SP500_Full_Scan",
     "top20_nse": "Top20_NSE",
@@ -108,4 +252,9 @@ SHEET_TABS = {
     "emerging": "Emerging_Compounders",
     "exit": "Exit_Candidates",
     "run_log": "Run_Log",
+    # New tabs — Elite Compounder Early Detection System
+    "elite_early_detect": "Elite_Compounders_EarlyDetect",   # strict 3-flag AND filter
+    "category_a": "Category_A_Elite_Compounders",
+    "category_b": "Category_B_Emerging_Leaders",
+    "category_c": "Category_C_Watchlist",
 }

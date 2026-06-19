@@ -81,7 +81,70 @@ weekdays. To run it immediately without waiting: GitHub repo → **Actions**
 tab → **Daily Stock Scan** → **Run workflow**.
 
 ---
-## Customizing
+## Elite Compounder Early Detection System
+
+An additional, fully backward-compatible layer designed to flag institutional
+accumulation and emerging leadership **before** standard trend-confirmation
+tools (Supertrend, weekly MACD positive) catch up — the goal being stocks
+that look like Bharat Forge (2020), BEL (2022), Tech Mahindra (2023), CAMS
+(2024), MTAR (2025) did in their early accumulation phase, not after the
+breakout was already obvious.
+
+**New modules, each producing its own fields + score contribution:**
+
+| Module | Key fields | Points |
+|---|---|---|
+| OBV Leadership | `obv_52w_high`, `obv_26w_high`, `obv_slope_13w`, `obv_slope_26w` | 20 |
+| RS Leadership | `rs_nifty_52w_high`, `rs_sector_52w_high`, `rs_nifty_chg_13w/26w`, `rs_sector_chg_13w/26w` | 20 |
+| Early MACD | `macd_early_bullish` (crossed above signal while still below zero) | 10 |
+| Early EMA Structure | `early_ema_alignment` (EMA10>EMA20 + EMA20 sloping up) | 5 |
+| Volatility Compression | `volatility_compression`, `atr_compression_ratio`, `range_compression_ratio` | 10 |
+| (existing) Daily Supertrend | rescaled from the original system | 10 |
+| (existing) Weekly MACD | rescaled from the original system | 10 |
+| (existing) Price > EMA20 | — | 5 |
+| (existing) Fundamentals | pass/fail on the same 4 filters as before | 10 |
+
+These sum to **`EliteCompounderScore`** (0-100), with a parallel category field
+(`elite_category`): Category A (>80), Category B (65-80), Category C (50-65).
+
+**New tabs:**
+- `Elite_Compounders_EarlyDetect` — the strict filter: only stocks where
+  `OBV_52W_HIGH` AND `RS_NIFTY_52W_HIGH` AND `MACD_EARLY_BULLISH` are all
+  true, sorted by `EliteCompounderScore` descending. This is the
+  highest-conviction "catch it early" list.
+- `Category_A_Elite_Compounders`, `Category_B_Emerging_Leaders`,
+  `Category_C_Watchlist` — broader score-band views across the whole universe.
+
+**Visual flags** (🟢 = true, blank = false/unknown) appear in every full-scan
+and category tab: `flag_obv_leader`, `flag_rs_leader`, `flag_early_macd`,
+`flag_compression`, `flag_ema_alignment`, `flag_near_breakout`.
+
+### The RS-vs-Sector caveat
+
+`rs_sector_*` fields compare each stock against its **sector** benchmark
+(not just the broad Nifty/S&P 500). For US stocks this is rock-solid — the
+11 GICS sectors map 1:1 to the SPDR sector ETFs (XLK, XLF, XLV, etc.).
+
+For NSE stocks, the mapping (`SECTOR_INDEX_MAP_NSE` in `config.py`) uses
+common NSE sector index tickers (Nifty Bank, Nifty IT, Nifty Auto, etc.) —
+these are **best-effort**, not all verified to resolve via yfinance. If a
+specific sector ticker fails to fetch, that stock's RS_SECTOR automatically
+and silently-to-the-user-but-not-silently-in-the-data falls back to RS vs.
+the broad Nifty 50 index instead. **Check the `sector_index_source` column**
+after your first run with this update — it shows the actual ticker used per
+sector, or `FALLBACK_BROAD_INDEX` if it had to fall back. If you see a lot of
+fallbacks, send me the sector labels involved and I'll find working tickers
+or alternative data sources for those.
+
+### Original system is untouched
+
+Nothing above changes the original composite score, categories (Elite/
+Emerging/Exit), or tabs from before. The Elite Compounder Early Detection
+System runs as an additional, independent scoring pass — you now have both
+the lagging/confirmation view (original) and the leading/accumulation view
+(new) side by side.
+
+
 
 Everything tunable lives in **`config.py`**:
 - Composite score weights (`WEIGHT_OBV`, etc. — must sum to 100)
