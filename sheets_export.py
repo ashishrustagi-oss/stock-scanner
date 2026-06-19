@@ -56,4 +56,15 @@ def export_to_sheets(tabs: dict[str, pd.DataFrame]):
 
         values = [df_out.columns.tolist()] + df_out.astype(str).values.tolist()
         worksheet.update(values, value_input_option="USER_ENTERED")
+
+        # Freeze the header row + first column (ticker) so they stay visible
+        # while scrolling through the many indicator columns to the right.
+        # Re-applied every run since clear()/update() don't touch this
+        # setting, but it's cheap and guarantees it's always correct even
+        # on brand-new tabs.
+        try:
+            worksheet.freeze(rows=1, cols=1)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Could not freeze header/ticker column on '%s': %s", tab_name, exc)
+
         logger.info("Exported %d rows to tab '%s'", len(df_out), tab_name)
