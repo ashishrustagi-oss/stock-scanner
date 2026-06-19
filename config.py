@@ -43,6 +43,18 @@ FUNDAMENTALS_REFRESH_WEEKDAY = 0  # 0=Monday. Fundamentals are refetched only on
 FUNDAMENTALS_CACHE_PATH = "cache/fundamentals_cache.json"
 
 # ----------------------------------------------------------------------------
+# MF / FII SHAREHOLDING PATTERN (highest-risk module — see shareholding.py)
+# ----------------------------------------------------------------------------
+# Best-effort NSE corporate-filings endpoint for shareholding pattern filings.
+# {symbol} is substituted with the bare NSE symbol (no .NS suffix). This is
+# the single most likely thing to need fixing first if nothing resolves —
+# check the Actions log for the actual HTTP status/response on a failure.
+NSE_SHAREHOLDING_API_URL = "https://www.nseindia.com/api/corporate-shareholding-pattern?index=equities&symbol={symbol}"
+SHAREHOLDING_CACHE_PATH = "cache/shareholding_history.json"
+SHAREHOLDING_CACHE_MAX_AGE_DAYS = 75   # ~quarterly; avoids re-fetching every day
+SHAREHOLDING_SLEEP_SECONDS = 1.5       # gentle pacing against a fragile endpoint
+
+# ----------------------------------------------------------------------------
 # INDICATOR PARAMETERS
 # ----------------------------------------------------------------------------
 OBV_SLOPE_SHORT_WINDOW = 20

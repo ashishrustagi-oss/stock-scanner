@@ -10,6 +10,7 @@ import config
 import data_fetch
 import fundamentals as fnd
 import sector_data
+import shareholding
 import sheets_export
 import universe
 
@@ -68,6 +69,26 @@ def fake_get_fundamentals(yf_tickers, force_refresh=False):
     return out
 
 
+def fake_get_shareholding_trends(nse_symbols):
+    rng = np.random.RandomState(456)
+    out = {}
+    for t in nse_symbols:
+        roll = rng.rand()
+        if roll < 0.15:
+            out[t] = {"mf_pct": None, "fii_pct": None, "mf_pct_prev": None, "fii_pct_prev": None,
+                      "mf_holding_increasing": None, "fii_holding_increasing": None,
+                      "quarter_end": None, "data_quality": "missing"}
+        else:
+            mf, mf_prev = rng.uniform(2, 15), rng.uniform(2, 15)
+            fii, fii_prev = rng.uniform(5, 25), rng.uniform(5, 25)
+            out[t] = {
+                "mf_pct": mf, "fii_pct": fii, "mf_pct_prev": mf_prev, "fii_pct_prev": fii_prev,
+                "mf_holding_increasing": mf > mf_prev, "fii_holding_increasing": fii > fii_prev,
+                "quarter_end": "2025-12-31", "data_quality": "ok",
+            }
+    return out
+
+
 captured_tabs = {}
 
 
@@ -103,6 +124,7 @@ data_fetch.fetch_price_history = fake_fetch_price_history
 data_fetch.fetch_index_history = fake_fetch_index_history
 fnd.get_fundamentals = fake_get_fundamentals
 sector_data.get_sector_close_map = fake_get_sector_close_map
+shareholding.get_shareholding_trends = fake_get_shareholding_trends
 sheets_export.export_to_sheets = fake_export_to_sheets
 universe.get_nse500_universe = fake_nse_universe
 universe.get_sp500_universe = fake_sp500_universe

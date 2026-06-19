@@ -158,6 +158,54 @@ Everything tunable lives in **`config.py`**:
   (times are UTC)
 
 ---
+## MF / FII Shareholding Trend (NSE only — highest-risk module)
+
+Tracks whether Mutual Fund and FII/FPI holding % is **increasing quarter-over-
+quarter** — a classic "smart money" accumulation signal, separate from
+everything else in this system.
+
+**Why this is the riskiest part of the whole build:** every other data source
+here (yfinance prices, sector ETFs, S&P500/NSE500 lists) has a clean,
+well-documented format. Shareholding pattern data does not — it's a
+quarterly SEBI regulatory filing, usually submitted as XBRL (structured XML)
+with a PDF attachment, and the exact field names / table layout can vary by
+which filing software the company used. This module:
+
+1. Queries NSE's corporate-filings API for each NSE stock's shareholding
+   pattern filings (`config.NSE_SHAREHOLDING_API_URL` — **fix this first**
+   if nothing resolves at all).
+2. Tries to parse the XBRL attachment using flexible keyword-based tag
+   matching (looks for tags containing "mutualfund"/"foreignportfolio" +
+   "percentage", not exact hardcoded paths).
+3. Falls back to parsing the PDF attachment's summary table the same way —
+   by keyword-matching row labels ("Mutual Funds", "Foreign Portfolio
+   Investors") rather than assuming a fixed column position.
+4. Caches each quarter found in `cache/shareholding_history.json`
+   permanently — once 2+ quarters are on file for a stock, the
+   increasing/decreasing flag becomes available. **Expect the first couple
+   of quarters to just show missing/blank trend flags** until enough
+   history accumulates; this is expected, not a bug.
+
+**New columns** (NSE tabs only — blank on US tabs, this is an Indian
+regulatory concept with no equivalent built here): `mf_holding_pct`,
+`fii_holding_pct`, previous-quarter values, `mf_holding_increasing`,
+`fii_holding_increasing`, visual flags, and `shareholding_data_quality`.
+
+**This is informational only** — it does NOT feed into `composite_score` or
+`EliteCompounderScore`, specifically so a shaky data source can't quietly
+degrade either already-tuned scoring system. If the parsing logic turns out
+to work well after a few live runs, ask and I can fold a weighted
+contribution into the Elite score.
+
+**Realistic expectation:** the XBRL/PDF parsing logic is tested against
+synthetic data that mimics the standard SEBI format, but has not been tested
+against a real NSE filing (no network access to verify the exact API/file
+formats from where this was built). The first live run's
+`shareholding_data_quality` column will tell us whether the approach works
+at all — if most rows show `missing`, send me the Actions log and we'll fix
+it the same way we fixed the sector mapping, likely needing 2-3 rounds given
+the added complexity of PDF/XBRL parsing vs. the simple CSVs used elsewhere.
+
 ## Known limitations — read before relying on this
 
 - **NSE fundamental coverage via Yahoo Finance is patchy.** Many Indian

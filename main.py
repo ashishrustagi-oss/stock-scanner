@@ -25,6 +25,7 @@ import fundamentals as fnd
 import indicators as ind
 import scoring as sc
 import sector_data
+import shareholding
 import sheets_export
 import universe
 
@@ -186,6 +187,35 @@ def process_universe(label: str, universe_df: pd.DataFrame, index_ticker: str) -
     # surfaced under an unambiguous name for quick reading in the sheet.
     metrics_df["RS_vs_Broad_Index_pct"] = metrics_df["rs_score"]
 
+    # MF/FII shareholding trend — NSE-specific (SEBI quarterly filing concept,
+    # no equivalent free data source built for US institutional holdings
+    # here; US uses a different framework — SEC 13F — out of scope).
+    # Informational only: does NOT feed into composite_score or
+    # EliteCompounderScore, so it can't disrupt either already-tuned system.
+    if label == "NSE500":
+        share_trends = shareholding.get_shareholding_trends(metrics_df["ticker"].tolist())
+        share_df = pd.DataFrame(
+            [{"ticker": t, **v} for t, v in share_trends.items()]
+        ).rename(columns={
+            "mf_pct": "mf_holding_pct", "fii_pct": "fii_holding_pct",
+            "mf_pct_prev": "mf_holding_pct_prev_qtr", "fii_pct_prev": "fii_holding_pct_prev_qtr",
+            "quarter_end": "shareholding_quarter_end", "data_quality": "shareholding_data_quality",
+        })
+        metrics_df = metrics_df.merge(share_df, on="ticker", how="left")
+        metrics_df["flag_mf_increasing"] = metrics_df["mf_holding_increasing"].apply(
+            lambda v: "🟢" if v is True else ""
+        )
+        metrics_df["flag_fii_increasing"] = metrics_df["fii_holding_increasing"].apply(
+            lambda v: "🟢" if v is True else ""
+        )
+    else:
+        for col in [
+            "mf_holding_pct", "fii_holding_pct", "mf_holding_pct_prev_qtr", "fii_holding_pct_prev_qtr",
+            "mf_holding_increasing", "fii_holding_increasing", "shareholding_quarter_end",
+            "shareholding_data_quality", "flag_mf_increasing", "flag_fii_increasing",
+        ]:
+            metrics_df[col] = None
+
     metrics_df["universe"] = label
     metrics_df = metrics_df.sort_values("composite_score", ascending=False).reset_index(drop=True)
 
@@ -235,6 +265,10 @@ DISPLAY_COLUMNS = [
     "range_compression_ratio", "volatility_compression",
     # Fundamentals
     "sales_cagr", "profit_cagr", "roce", "debt_equity", "data_quality",
+    # MF/FII shareholding trend (NSE-only, informational — see shareholding.py)
+    "mf_holding_pct", "mf_holding_pct_prev_qtr", "mf_holding_increasing", "flag_mf_increasing",
+    "fii_holding_pct", "fii_holding_pct_prev_qtr", "fii_holding_increasing", "flag_fii_increasing",
+    "shareholding_quarter_end", "shareholding_data_quality",
 ]
 
 
