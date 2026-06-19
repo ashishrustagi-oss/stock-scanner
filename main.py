@@ -179,6 +179,13 @@ def process_universe(label: str, universe_df: pd.DataFrame, index_ticker: str) -
     # Elite Compounder Early Detection scoring — additive, runs after the above
     metrics_df = sc.compute_elite_compounder_score(metrics_df)
 
+    # Single, clearly-labeled RS column: each stock vs ITS OWN home broad
+    # index only (Nifty 50 for NSE, S&P 500 for US) — distinct from the
+    # sector-specific RS fields above. This is the same underlying
+    # outperformance figure as `rs_score` (blended over ~1m/3m/6m), just
+    # surfaced under an unambiguous name for quick reading in the sheet.
+    metrics_df["RS_vs_Broad_Index_pct"] = metrics_df["rs_score"]
+
     metrics_df["universe"] = label
     metrics_df = metrics_df.sort_values("composite_score", ascending=False).reset_index(drop=True)
 
@@ -195,6 +202,7 @@ DISPLAY_COLUMNS = [
     "composite_score", "category", "fundamentally_qualified",
     # ── Elite Compounder Early Detection — headline fields ──
     "EliteCompounderScore", "elite_category",
+    "RS_vs_Broad_Index_pct",   # single clear RS-vs-home-index column
     "flag_obv_leader", "flag_rs_leader", "flag_early_macd",
     "flag_compression", "flag_ema_alignment", "flag_near_breakout",
     # Original sub-scores
