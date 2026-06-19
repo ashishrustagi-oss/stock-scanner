@@ -9,12 +9,20 @@ benchmark ticker can't be resolved or fails to fetch. The fallback is always
 visible downstream via the `source` returned for each sector — never silent.
 
 US sector mapping (GICS Sector -> SPDR ETF) is well-established and reliable.
-NSE sector mapping (industry label -> NSE sector index) is best-effort; some
-tickers may not resolve via yfinance. Check the `sector_index_source` column
-in the output after the first live run.
+
+NSE sector mapping uses an EXACT (normalized) match against the real 20
+"Sector" labels NSE actually uses across the NSE500 list — confirmed from a
+live sheet on 2026-06-19, not guessed. Matching is done on a normalized form
+(lowercase, "&"/"and" stripped, punctuation removed, whitespace collapsed) so
+minor formatting differences in the source CSV don't break the match.
+Several sectors are intentionally left unmapped (Capital Goods, Chemicals,
+Construction, etc.) because there's no free index ticker I can confidently
+confirm resolves on Yahoo Finance for them — these fall back to RS vs. Nifty
+50, which is an honest limitation of free data rather than a bug to chase.
 """
 
 import logging
+import re
 
 import pandas as pd
 import yfinance as yf
@@ -24,12 +32,33 @@ import config
 logger = logging.getLogger(__name__)
 
 
+def _normalize_label(s: str) -> str:
+    """Lowercase, strip '&'/'and', remove punctuation, collapse whitespace."""
+    s = str(s).lower()
+    s = s.replace("&", " ")
+    s = re.sub(r"\band\b", " ", s)
+    s = re.sub(r"[^a-z0-9 ]", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
 def _match_ticker(sector_label: str, mapping: dict) -> str | None:
+    """
+    Exact match on the normalized label first (reliable, since `mapping`'s
+    keys are now the real labels NSE/GICS use). Falls back to substring
+    containment as a safety net for any label variant not seen before.
+    """
     if not sector_label or pd.isna(sector_label):
         return None
-    label_lower = str(sector_label).lower()
+    normalized = _normalize_label(sector_label)
+
     for key, ticker in mapping.items():
-        if key.lower() in label_lower:
+        if _normalize_label(key) == normalized:
+            return ticker
+
+    # Safety-net substring fallback for unexpected label variants
+    for key, ticker in mapping.items():
+        if _normalize_label(key) in normalized:
             return ticker
     return None
 

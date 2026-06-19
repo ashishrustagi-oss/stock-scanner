@@ -165,32 +165,32 @@ SECTOR_INDEX_MAP_US = {
     "Materials":                     "XLB",
 }
 
-# NSE: industry-label substring (case-insensitive match) -> yfinance index ticker.
-# These are best-effort — NSE sector index tickers on Yahoo Finance are not as
-# reliably documented as the US SPDR ETFs. Any ticker that fails to fetch falls
-# back automatically to the broad Nifty 50 index (see sector_data.py), and the
-# `sector_index_source` column in the output shows which stocks got a real
-# sector comparison vs. the fallback — check that column after the first run
-# and report any tickers worth fixing.
+# NSE: EXACT (normalized) sector label -> yfinance index ticker.
+# These 20 labels are the REAL, COMPLETE set of NSE "Sector" values confirmed
+# from a live NSE500_Full_Scan sheet on 2026-06-19 — not guessed. Only sectors
+# I can reasonably confirm have a working free index ticker are mapped; the
+# rest are left out on purpose and fall back to RS vs. Nifty 50 (visible via
+# `sector_index_source` = FALLBACK_BROAD_INDEX), which is an honest data
+# limitation rather than something to keep guessing tickers for:
+#
+#   Mapped (10):  Automobile and Auto Components, Fast Moving Consumer Goods,
+#                 Financial Services, Healthcare, Information Technology,
+#                 Media Entertainment & Publication, Metals & Mining,
+#                 Oil Gas & Consumable Fuels, Realty, Consumer Services
+#   Intentionally unmapped (10): Capital Goods, Chemicals, Construction,
+#                 Construction Materials, Consumer Durables, Diversified,
+#                 Power, Services, Telecommunication, Textiles
 SECTOR_INDEX_MAP_NSE = {
-    "bank":            "^NSEBANK",
-    "financial":       "^CNXFIN",
-    "it":              "^CNXIT",
-    "software":        "^CNXIT",
-    "auto":            "^CNXAUTO",
-    "pharma":          "^CNXPHARMA",
-    "healthcare":      "^CNXPHARMA",
-    "fmcg":            "^CNXFMCG",
-    "metal":           "^CNXMETAL",
-    "energy":          "^CNXENERGY",
-    "oil":             "^CNXENERGY",
-    "realty":          "^CNXREALTY",
-    "real estate":     "^CNXREALTY",
-    "media":           "^CNXMEDIA",
-    "infrastructure":  "^CNXINFRA",
-    "psu bank":        "^CNXPSUBANK",
-    "consumption":     "^CNXCONSUM",
-    "commodities":     "^CNXCMDT",
+    "Automobile and Auto Components":   "^CNXAUTO",      # Nifty Auto
+    "Fast Moving Consumer Goods":       "^CNXFMCG",      # Nifty FMCG
+    "Financial Services":               "^CNXFIN",       # Nifty Financial Services
+    "Healthcare":                       "^CNXPHARMA",    # closest available proxy (pharma-heavy)
+    "Information Technology":           "^CNXIT",        # Nifty IT
+    "Media Entertainment & Publication": "^CNXMEDIA",    # Nifty Media
+    "Metals & Mining":                  "^CNXMETAL",     # Nifty Metal
+    "Oil Gas & Consumable Fuels":       "^CNXENERGY",    # Nifty Energy (closest proxy)
+    "Realty":                           "^CNXREALTY",    # Nifty Realty
+    "Consumer Services":                "^CNXCONSUM",    # Nifty Consumption (loose proxy)
 }
 
 # --- Elite Compounder Score weights (must sum to 100) ---
