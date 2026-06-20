@@ -11,9 +11,17 @@ Every tab also gets, automatically and on every run:
     column a dropdown arrow for sorting ascending/descending or filtering
     by value — built into Sheets, no formulas needed.
   - Detail/sub-score columns (column R onward — everything past the
-    headline ticker/score/flag columns) grouped into a collapsible outline,
-    so the sheet opens clean but the underlying detail is one click away
-    via the small [-] toggle that appears above column R.
+    headline ticker/score/flag columns) grouped into a collapsible outline.
+
+IMPORTANT — learned from a real run: doing each of the above as a separate
+gspread convenience call (freeze(), format(), set_basic_filter(), etc.) adds
+up to 5-6 API calls per tab. With 13 tabs that's 70-90 calls fired in rapid
+succession, which blows past Google Sheets API's default "60 write requests
+per minute per user" quota — the actual data still exports fine, but the
+formatting calls start failing with HTTP 429 partway through. Fixed by
+combining all of one tab's formatting requests into a SINGLE raw
+batch_update() call instead of several separate ones — cuts the call count
+roughly in half and keeps related operations atomic per tab.
 
 Requires:
   - A Google Cloud service account with the Sheets API (and Drive API, for
@@ -25,6 +33,7 @@ Requires:
 """
 
 import logging
+import time
 
 import gspread
 import gspread.utils as gs_utils
@@ -57,12 +66,79 @@ HEADER_FORMAT = {
 # into a collapsible outline rather than shown flat.
 HEADLINE_COLUMN_COUNT = 17
 
+# Small pause between tabs' formatting batch calls — with the batching fix
+# this isn't strictly required to stay under quota, but it's cheap insurance
+# against bursts, especially on accounts sharing the quota with other apps.
+INTER_TAB_PAUSE_SECONDS = 0.5
+
 
 def _get_client() -> gspread.Client:
     creds = Credentials.from_service_account_file(
         config.GOOGLE_SERVICE_ACCOUNT_JSON_PATH, scopes=SCOPES
     )
     return gspread.authorize(creds)
+
+
+def _build_formatting_requests(sheet_id: int, n_rows: int, n_cols: int, include_grouping: bool = True) -> list[dict]:
+    """
+    Builds the full list of raw Sheets API request objects for one tab:
+    freeze header+ticker column, bold/colored header row, basic filter
+    (sort/filter dropdowns), and collapsible grouping of detail columns.
+    Combined into one list so the caller can send them as a single
+    batch_update() instead of 4-5 separate API calls.
+
+    include_grouping=False skips the column-R-onward grouping — used for
+    the portfolio tab, whose narrower layout has live-price columns near
+    the end that should stay visible rather than tucked into a group.
+    """
+    requests = [
+        {
+            "updateSheetProperties": {
+                "properties": {
+                    "sheetId": sheet_id,
+                    "gridProperties": {"frozenRowCount": 1, "frozenColumnCount": 1},
+                },
+                "fields": "gridProperties.frozenRowCount,gridProperties.frozenColumnCount",
+            }
+        },
+        {
+            "repeatCell": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "startRowIndex": 0, "endRowIndex": 1,
+                    "startColumnIndex": 0, "endColumnIndex": n_cols,
+                },
+                "cell": {"userEnteredFormat": HEADER_FORMAT},
+                "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)",
+            }
+        },
+        {
+            "setBasicFilter": {
+                "filter": {
+                    "range": {
+                        "sheetId": sheet_id,
+                        "startRowIndex": 0, "endRowIndex": n_rows + 1,
+                        "startColumnIndex": 0, "endColumnIndex": n_cols,
+                    }
+                }
+            }
+        },
+    ]
+
+    if include_grouping and n_cols > HEADLINE_COLUMN_COUNT:
+        col_range = {
+            "sheetId": sheet_id, "dimension": "COLUMNS",
+            "startIndex": HEADLINE_COLUMN_COUNT, "endIndex": n_cols,
+        }
+        # Delete any existing group first (no-op if none exists — caller
+        # sends this in the same batch as a best-effort, errors on this
+        # specific sub-request don't get individually caught since it's
+        # bundled, but an absent group simply has nothing to delete and
+        # Sheets tolerates that without failing the whole batch).
+        requests.append({"deleteDimensionGroup": {"range": col_range}})
+        requests.append({"addDimensionGroup": {"range": col_range}})
+
+    return requests
 
 
 def export_to_sheets(tabs: dict[str, pd.DataFrame]):
@@ -89,51 +165,17 @@ def export_to_sheets(tabs: dict[str, pd.DataFrame]):
         worksheet.update(values, value_input_option="USER_ENTERED")
 
         n_cols = max(len(df_out.columns), 1)
-        last_col_a1 = gs_utils.rowcol_to_a1(1, n_cols)  # e.g. "BT1" for 72 columns
+        n_rows = len(df_out)
 
-        # Freeze the header row + first column (ticker) so they stay visible
-        # while scrolling through the many indicator columns to the right.
+        # All formatting (freeze, header style, sort filter, column grouping)
+        # combined into ONE batch_update call per tab — see module docstring
+        # for why this matters (Sheets API write-quota).
         try:
-            worksheet.freeze(rows=1, cols=1)
+            include_grouping = tab_name != config.SHEET_TABS.get("my_portfolio")
+            requests = _build_formatting_requests(worksheet.id, n_rows, n_cols, include_grouping)
+            spreadsheet.batch_update({"requests": requests})
         except Exception as exc:  # noqa: BLE001
-            logger.warning("Could not freeze header/ticker column on '%s': %s", tab_name, exc)
-
-        # Bold, colored header row for quick visual distinction from data.
-        try:
-            worksheet.format(f"A1:{last_col_a1}", HEADER_FORMAT)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Could not format header row on '%s': %s", tab_name, exc)
-
-        # Basic filter across the full data range — gives every column a
-        # dropdown for sorting ascending/descending or filtering by value.
-        # Re-applying each run is harmless and keeps it correct even if the
-        # row/column count changed since the last run.
-        try:
-            worksheet.clear_basic_filter()
-        except Exception:  # noqa: BLE001 - fine if there wasn't one yet
-            pass
-        try:
-            worksheet.set_basic_filter()
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Could not apply sort/filter dropdowns on '%s': %s", tab_name, exc)
-
-        # Group detail columns (R onward) into a collapsible outline. Only
-        # applies to the wide scan tabs (NSE/US full scan, Top20, Elite/
-        # Emerging/Exit, Category A/B/C) where columns A-Q are the headline
-        # view. The portfolio tab has a different, narrower layout where the
-        # live-price columns near the end should stay visible, so it's
-        # excluded here. Re-applying each run: delete any existing group
-        # first so we don't stack duplicate/overlapping groups over time.
-        if n_cols > HEADLINE_COLUMN_COUNT and tab_name != config.SHEET_TABS.get("my_portfolio"):
-            start_idx = HEADLINE_COLUMN_COUNT  # 0-indexed, so this IS column R (18th, 1-indexed)
-            end_idx = n_cols                    # 0-indexed exclusive end == last column inclusive
-            try:
-                worksheet.delete_dimension_group_columns(start_idx, end_idx)
-            except Exception:  # noqa: BLE001 - fine if there wasn't a group yet
-                pass
-            try:
-                worksheet.add_dimension_group_columns(start_idx, end_idx)
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("Could not group detail columns on '%s': %s", tab_name, exc)
+            logger.warning("Could not apply formatting on '%s': %s", tab_name, exc)
 
         logger.info("Exported %d rows to tab '%s'", len(df_out), tab_name)
+        time.sleep(INTER_TAB_PAUSE_SECONDS)
