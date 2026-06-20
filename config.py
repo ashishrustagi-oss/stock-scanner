@@ -32,7 +32,7 @@ INDEX_TICKER_US = "^GSPC"    # S&P 500 index (use "SPY" if you prefer the ETF)
 # ----------------------------------------------------------------------------
 # DATA FETCH
 # ----------------------------------------------------------------------------
-PRICE_HISTORY_PERIOD = "3y"     # daily history pulled per ticker (needs buffer for weekly MACD warm-up)
+PRICE_HISTORY_PERIOD = "5y"     # bumped from 3y: monthly EMA50 needs ~50 monthly bars to be reasonably stable
 BATCH_SIZE = 75                 # tickers per yfinance batch call
 BATCH_SLEEP_SECONDS = 2         # pause between batches to avoid rate-limiting
 MAX_RETRIES = 3
@@ -68,6 +68,45 @@ SHAREHOLDING_SAVE_EVERY_N = 15         # incremental cache checkpoint, so a canc
 # File > Import. This script only ever READS this tab, never writes to it,
 # so re-importing whenever you trade never conflicts with anything here.
 MY_HOLDINGS_TAB_NAME = "My_Holdings"
+
+# ════════════════════════════════════════════════════════════════════════════
+# PHASE 1 — Elite Compounder Discovery System v2.0
+# All built from data already fetched — no new external data sources.
+# Entirely additive; doesn't change composite_score or EliteCompounderScore.
+# ════════════════════════════════════════════════════════════════════════════
+
+# --- Module 3: RS Percentile Rank ---
+# rs_rank is the percentile rank (0-100) of RS_vs_Broad_Index_pct WITHIN the
+# stock's own universe — one column, not split by universe name, since each
+# stock only ever belongs to one universe anyway.
+RS_RANK_SCORE_THRESHOLD_TOP    = 95   # rank > 95 -> +15
+RS_RANK_SCORE_POINTS_TOP       = 15
+RS_RANK_SCORE_THRESHOLD_HIGH   = 90   # rank 90-95 -> +10
+RS_RANK_SCORE_POINTS_HIGH      = 10
+RS_RANK_SCORE_THRESHOLD_MID    = 80   # rank 80-90 -> +5
+RS_RANK_SCORE_POINTS_MID       = 5
+RS_RANK_TOP_DECILE_THRESHOLD   = 90   # flag_rs_top_decile fires above this
+
+# --- Module 4: Trend Birth Detection ---
+TREND_BIRTH_PCT_FROM_HIGH_FLOOR = -25.0   # must be within 25% of 52w high (not deeply broken down)
+TREND_BIRTH_SCORE_POINTS = 10
+
+# --- Module 5: Monthly Trend Confirmation ---
+MONTHLY_EMA_FAST = 20
+MONTHLY_EMA_SLOW = 50
+MONTHLY_TREND_SCORE_POINTS = 10
+
+# --- Module 6: Sector Leadership Engine ---
+# Ranks stocks within their own (universe, sector) group by EliteCompounderScore
+# — chosen because that's the system specifically built for leadership/early
+# detection, and it's already a normalized 0-100 score safe to compare directly
+# within a small group. Change this in scoring.py's compute_sector_leadership()
+# if you'd rather rank by composite_score or pure RS-vs-sector instead.
+SECTOR_LEADER_SCORE_RANK_1 = 15
+SECTOR_LEADER_SCORE_RANK_2 = 10
+SECTOR_LEADER_SCORE_RANK_3 = 5
+SECTOR_LEADER_TOP_N_FOR_FLAG = 3     # flag_sector_leader fires for ranks 1-3
+SECTOR_LEADER_TOP_N_FOR_TAB = 5      # the SECTOR_LEADERS tab shows top 5 per sector
 
 # ----------------------------------------------------------------------------
 # INDICATOR PARAMETERS
@@ -285,4 +324,6 @@ SHEET_TABS = {
     "category_b": "Category_B_Emerging_Leaders",
     "category_c": "Category_C_Watchlist",
     "my_portfolio": "My_Portfolio_Scored",
+    "trend_birth": "TREND_BIRTH",
+    "sector_leaders": "SECTOR_LEADERS",
 }

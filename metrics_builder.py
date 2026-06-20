@@ -28,11 +28,16 @@ def build_metrics_row(
 
     obv_series = ind.obv(df)
     weekly = ind.resample_weekly(df)
+    monthly = ind.resample_monthly(df)
 
     daily_macd, daily_signal, daily_hist = ind.macd(close)
     weekly_macd_s, weekly_signal_s, weekly_hist_s = ind.macd(weekly["Close"])
+    monthly_macd_s, monthly_signal_s, monthly_hist_s = ind.macd(monthly["Close"])
 
     weekly_hist_val = float(weekly_hist_s.iloc[-1]) if len(weekly_hist_s) else np.nan
+    monthly_macd_val = float(monthly_macd_s.iloc[-1]) if len(monthly_macd_s) else np.nan
+    monthly_signal_val = float(monthly_signal_s.iloc[-1]) if len(monthly_signal_s) else np.nan
+    monthly_hist_val = float(monthly_hist_s.iloc[-1]) if len(monthly_hist_s) else np.nan
 
     st_slow_line, st_slow_dir   = ind.supertrend(df, **config.SUPERTREND_SLOW)
     st_fast_line, st_fast_dir   = ind.supertrend(df, **config.SUPERTREND_FAST)
@@ -40,6 +45,10 @@ def build_metrics_row(
 
     ema10 = ind.ema(close, config.EMA10_PERIOD)
     ema20 = ind.ema(close, config.EMA_PERIOD)
+    monthly_ema20 = ind.ema(monthly["Close"], config.MONTHLY_EMA_FAST)
+    monthly_ema50 = ind.ema(monthly["Close"], config.MONTHLY_EMA_SLOW)
+    monthly_ema20_val = float(monthly_ema20.iloc[-1]) if len(monthly_ema20) else np.nan
+    monthly_ema50_val = float(monthly_ema50.iloc[-1]) if len(monthly_ema50) else np.nan
 
     # ── Elite Compounder Early Detection modules ──
     rs_nifty_series = ind.rs_ratio_series(close, index_close)
@@ -104,6 +113,20 @@ def build_metrics_row(
         "range_compression_ratio":    ind.range_compression_ratio(df),
         "volatility_compression":     bool_flag(
             atr_comp_pctile, config.VOLATILITY_COMPRESSION_PERCENTILE_THRESHOLD, le=True
+        ),
+        # ── Monthly Trend Confirmation module (Phase 1, Module 5) ──
+        "monthly_macd":           monthly_macd_val,
+        "monthly_signal":         monthly_signal_val,
+        "monthly_hist":           monthly_hist_val,
+        "monthly_ema20":          monthly_ema20_val,
+        "monthly_ema50":          monthly_ema50_val,
+        "monthly_bullish": (
+            1.0 if (
+                not np.isnan(monthly_macd_val) and not np.isnan(monthly_signal_val)
+                and not np.isnan(monthly_ema20_val) and not np.isnan(monthly_ema50_val)
+                and monthly_macd_val > monthly_signal_val
+                and monthly_ema20_val > monthly_ema50_val
+            ) else (np.nan if (np.isnan(monthly_macd_val) or np.isnan(monthly_ema20_val)) else 0.0)
         ),
     }
     return row

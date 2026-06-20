@@ -60,6 +60,19 @@ def resample_weekly(df: pd.DataFrame) -> pd.DataFrame:
     return weekly
 
 
+def resample_monthly(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calendar-month resampling for the Monthly Trend Confirmation module.
+    With 5 years of daily history this gives ~60 monthly bars — enough for
+    a reasonably stable monthly EMA50, though still less converged than a
+    multi-decade history would give; treat monthly EMA50 as directionally
+    useful rather than perfectly precise.
+    """
+    agg = {"Open": "first", "High": "max", "Low": "min", "Close": "last", "Volume": "sum"}
+    monthly = df.resample("ME").agg(agg).dropna(how="all")
+    return monthly
+
+
 # ----------------------------------------------------------------------------
 # ATR / Supertrend
 # ----------------------------------------------------------------------------

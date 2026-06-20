@@ -293,3 +293,118 @@ def categorize_elite(score: float) -> str:
     if config.ELITE_CATEGORY_C_LOW <= score < config.ELITE_CATEGORY_C_HIGH:
         return "Category C: Watchlist"
     return "Below Watchlist"
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# PHASE 1 — Elite Compounder Discovery System v2.0
+# Entirely additive. Built only from data already computed above — no new
+# scoring weight changes to composite_score or EliteCompounderScore.
+# Call compute_phase1_additions(df) AFTER compute_composite() and
+# compute_elite_compounder_score() have already run on the same DataFrame —
+# it reuses EliteCompounderScore for sector ranking and RS_vs_Broad_Index_pct
+# for the RS rank.
+# ════════════════════════════════════════════════════════════════════════════
+
+def compute_rs_rank(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Module 3: percentile rank (0-100) of RS_vs_Broad_Index_pct within this
+    universe, plus a points score and a top-decile flag. One column rather
+    than the originally-specified rs_rank_nse500/rs_rank_sp500 pair — a
+    stock only ever belongs to one universe at a time, so a single column
+    carries the same information without a redundant always-blank twin.
+    """
+    df = df.copy()
+    df["rs_rank"] = _pct_rank(df["RS_vs_Broad_Index_pct"])
+
+    def _points(rank):
+        if pd.isna(rank):
+            return np.nan
+        if rank > config.RS_RANK_SCORE_THRESHOLD_TOP:
+            return config.RS_RANK_SCORE_POINTS_TOP
+        if rank > config.RS_RANK_SCORE_THRESHOLD_HIGH:
+            return config.RS_RANK_SCORE_POINTS_HIGH
+        if rank > config.RS_RANK_SCORE_THRESHOLD_MID:
+            return config.RS_RANK_SCORE_POINTS_MID
+        return 0
+
+    df["rs_rank_score"] = df["rs_rank"].apply(_points)
+    df["flag_rs_top_decile"] = df["rs_rank"].apply(
+        lambda r: "🟢" if (not pd.isna(r) and r > config.RS_RANK_TOP_DECILE_THRESHOLD) else ""
+    )
+    return df
+
+
+def compute_trend_birth(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Module 4: flags stocks where price just reclaimed EMA20, MACD just
+    turned bullish while still below zero, OBV has been rising for 13 weeks,
+    and the stock isn't too deeply off its highs — the "just starting to
+    turn" signature, distinct from already-established-trend signals
+    elsewhere in this sheet.
+    """
+    df = df.copy()
+
+    def _row_flag(r):
+        vals = [r.get("close"), r.get("ema20"), r.get("macd_early_bullish"),
+                 r.get("obv_slope_13w"), r.get("pct_from_52w_high")]
+        if any(v is None or (isinstance(v, float) and np.isnan(v)) for v in vals):
+            return np.nan
+        return 1.0 if (
+            r["close"] > r["ema20"]
+            and r["macd_early_bullish"] == 1.0
+            and r["obv_slope_13w"] > 0
+            and r["pct_from_52w_high"] > config.TREND_BIRTH_PCT_FROM_HIGH_FLOOR
+        ) else 0.0
+
+    df["trend_birth_flag"] = df.apply(_row_flag, axis=1)
+    df["trend_birth_score"] = df["trend_birth_flag"].apply(
+        lambda v: config.TREND_BIRTH_SCORE_POINTS if v == 1.0 else (0 if v == 0.0 else np.nan)
+    )
+    df["flag_trend_birth"] = df["trend_birth_flag"].apply(lambda v: "🟢" if v == 1.0 else "")
+    return df
+
+
+def compute_monthly_trend_score(df: pd.DataFrame) -> pd.DataFrame:
+    """Module 5: flat points + visual flag for the monthly_bullish signal already computed in metrics_builder."""
+    df = df.copy()
+    df["monthly_trend_score"] = df["monthly_bullish"].apply(
+        lambda v: config.MONTHLY_TREND_SCORE_POINTS if v == 1.0 else (0 if v == 0.0 else np.nan)
+    )
+    df["flag_monthly_bullish"] = df["monthly_bullish"].apply(lambda v: "🟢" if v == 1.0 else "")
+    return df
+
+
+def compute_sector_leadership(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Module 6: ranks stocks within their own sector (within this universe —
+    NSE sectors and US sectors are never mixed) by EliteCompounderScore,
+    rewards the top 3, and flags them. Change the `sort_values` key below if
+    you'd rather rank by composite_score or pure RS-vs-sector instead.
+    """
+    df = df.copy()
+    df["sector_rank"] = (
+        df.groupby("sector")["EliteCompounderScore"]
+        .rank(method="first", ascending=False)
+    )
+
+    rank_points = {
+        1: config.SECTOR_LEADER_SCORE_RANK_1,
+        2: config.SECTOR_LEADER_SCORE_RANK_2,
+        3: config.SECTOR_LEADER_SCORE_RANK_3,
+    }
+    df["sector_leader_score"] = df["sector_rank"].apply(
+        lambda r: rank_points.get(int(r), 0) if not pd.isna(r) else np.nan
+    )
+    df["flag_sector_leader"] = df["sector_rank"].apply(
+        lambda r: "🟢" if (not pd.isna(r) and r <= config.SECTOR_LEADER_TOP_N_FOR_FLAG) else ""
+    )
+    return df
+
+
+def compute_phase1_additions(df: pd.DataFrame) -> pd.DataFrame:
+    """Convenience wrapper running all four Phase 1 modules in sequence."""
+    df = compute_rs_rank(df)
+    df = compute_trend_birth(df)
+    df = compute_monthly_trend_score(df)
+    df = compute_sector_leadership(df)
+    return df

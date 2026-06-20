@@ -253,7 +253,59 @@ independent of the daily script run. Assumes NSE-listed holdings (`NSE:`
 prefix); if you hold US stocks too, you'd want to adjust those two formulas
 manually for those specific rows.
 
+## Phase 1 — Elite Compounder Discovery System v2.0
+
+Four modules, all built entirely from data already being fetched — no new
+external data sources, no changes to `composite_score` or
+`EliteCompounderScore`.
+
+### Module 3: RS Percentile Rank
+`rs_rank` — where this stock's `RS_vs_Broad_Index_pct` ranks (0-100) within
+its own universe. One column rather than the originally-discussed
+`rs_rank_nse500`/`rs_rank_sp500` pair, since a stock only ever belongs to one
+universe — a single column carries the same information without an
+always-blank twin. `rs_rank_score` (0/5/10/15) and `flag_rs_top_decile`
+(🟢 above rank 90) ride alongside it. Currently informational only — not
+folded into any existing score.
+
+### Module 4: Trend Birth Detection
+`trend_birth_flag` — fires when price just reclaimed EMA20, MACD just turned
+bullish while still below zero, OBV has been rising for 13 weeks, and the
+stock isn't more than 25% off its highs. Meant to catch the "just starting
+to turn" moment, distinct from the already-confirmed-trend signals
+elsewhere. New tab: **`TREND_BIRTH`**, sorted by `trend_birth_score`.
+
+### Module 5: Monthly Trend Confirmation
+Adds a third timeframe (daily → weekly → **monthly**) using the same
+12/26/9 MACD convention and 20/50-period EMA cross, computed on
+calendar-month candles. `monthly_bullish` requires both monthly MACD>signal
+AND monthly EMA20>EMA50.
+
+**Trade-off made to support this:** `PRICE_HISTORY_PERIOD` was bumped from
+3 years to 5 years (`config.py`) so the monthly EMA50 has ~60 monthly bars
+to work with instead of ~36 — still less converged than a multi-decade
+history would give, so treat monthly EMA50 as directionally useful, not
+perfectly precise.
+
+### Module 6: Sector Leadership Engine
+Ranks stocks within their own **(universe, sector)** group — NSE and US
+stocks are never mixed even if a sector label looks similar on both sides.
+**Ranking basis: `EliteCompounderScore`** — chosen because it's already a
+normalized 0-100 score safe to compare directly within a small group, and
+it's the system built specifically for leadership/early detection. If you'd
+rather rank by `composite_score` or pure RS-vs-sector instead, that's a
+one-line change in `scoring.py`'s `compute_sector_leadership()`. Top 3 get
+points (15/10/5) and a 🟢 flag; new tab **`SECTOR_LEADERS`** shows the top 5
+per sector group.
+
+### A note on the column layout
+
+Adding 4 new headline flags pushed the "headline vs. detail" boundary in
+every wide tab from **column R to column V** — everything up through V is
+still flat/visible; the collapsible detail group now starts at V instead of R.
+
 ## Known limitations — read before relying on this
+
 
 
 - **NSE fundamental coverage via Yahoo Finance is patchy.** Many Indian
