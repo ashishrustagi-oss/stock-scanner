@@ -59,12 +59,12 @@ HEADER_FORMAT = {
     "horizontalAlignment": "CENTER",
 }
 
-# Columns A through U (1-21) are the headline view: ticker, name, sector,
+# Columns A through V (1-22) are the headline view: ticker, name, sector,
 # close, composite_score, category, EliteCompounderScore, elite_category,
-# RS_vs_Broad_Index_pct, and all visual flags (original 6 + Phase 1's 4).
-# Column V onward is every detailed sub-score and raw indicator value behind
-# those headlines — grouped into a collapsible outline rather than shown flat.
-HEADLINE_COLUMN_COUNT = 21
+# RS_vs_Broad_Index_pct, and all visual flags (original 6 + Phase 1's 4 +
+# Phase 2's 1). Column W onward is every detailed sub-score and raw
+# indicator value — grouped into a collapsible outline rather than shown flat.
+HEADLINE_COLUMN_COUNT = 22
 
 # Small pause between tabs' formatting batch calls — with the batching fix
 # this isn't strictly required to stay under quota, but it's cheap insurance

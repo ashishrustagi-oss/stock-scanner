@@ -304,9 +304,47 @@ Adding 4 new headline flags pushed the "headline vs. detail" boundary in
 every wide tab from **column R to column V** — everything up through V is
 still flat/visible; the collapsible detail group now starts at V instead of R.
 
+## Phase 2 — Institutional Accumulation Scoring (Module 2 extension)
+
+Builds on the MF/FII shareholding trend (NSE-only, same scope as before) by
+adding quarter-over-quarter magnitude and 2-quarter streak detection.
+
+**New columns:** `mf_holding_change_qoq` / `fii_holding_change_qoq` (the
+actual percentage-point change, not just the up/down boolean),
+`mf_increasing_2q_streak` / `fii_increasing_2q_streak` (was it increasing
+the quarter before that too?), `institutional_accumulation_score` (0-20),
+`flag_institutional_accumulation`.
+
+**Scoring (resolves an ambiguity in the original spec):** the spec listed
+"MF increasing: +5" and "MF increasing 2 quarters: +10" as separate line
+items, but summing all four literally would max out at 30, not the stated
+"Maximum = 20." The two tiers **don't stack** — a 2-quarter streak already
+implies the latest quarter was increasing too, so it replaces the
+single-quarter tier rather than adding to it:
+
+| MF/FII state | Points (each side, max 10) |
+|---|---|
+| Increasing 2 quarters in a row | 10 |
+| Increasing just the latest quarter (or streak broke) | 5 |
+| Not increasing / no data | 0 |
+
+MF max 10 + FII max 10 = 20 total, matching the spec's stated maximum.
+`flag_institutional_accumulation` fires when the combined score exceeds 10
+— meaning at least one side needs a real 2-quarter streak; two stocks each
+just nudging up one quarter (5+5=10) doesn't clear the bar on its own.
+
+**Important timing expectation:** the 2-quarter streak fields need **3
+quarters of real history** on file for a stock before they can resolve to
+`TRUE`/`FALSE` instead of blank. Since the shareholding cache only started
+accumulating recently (and only gets ~60 new tickers per run due to NSE's
+rate limiting), most stocks will show blank streak fields for several
+months yet — falling back to the single-quarter `+5` tier in the meantime.
+This isn't a bug; quarterly data just takes real calendar quarters to build
+up. Not informational only this time, though it's still completely separate
+from `composite_score` and `EliteCompounderScore` — neither existing system
+is touched.
+
 ## Known limitations — read before relying on this
-
-
 
 - **NSE fundamental coverage via Yahoo Finance is patchy.** Many Indian
   mid/small-caps have incomplete income statement / balance sheet data on

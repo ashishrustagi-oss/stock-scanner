@@ -336,19 +336,38 @@ def get_shareholding_trends(nse_symbols: list[str]) -> dict:
             out[sym] = {
                 "mf_pct": None, "fii_pct": None, "mf_pct_prev": None, "fii_pct_prev": None,
                 "mf_holding_increasing": None, "fii_holding_increasing": None,
+                "mf_holding_change_qoq": None, "fii_holding_change_qoq": None,
+                "mf_increasing_2q_streak": None, "fii_increasing_2q_streak": None,
                 "quarter_end": None, "data_quality": "missing",
             }
             continue
 
         latest = entries[-1]
         prev = entries[-2] if len(entries) >= 2 else None
+        prev2 = entries[-3] if len(entries) >= 3 else None  # needed for 2-quarter streak detection
 
         mf_inc = fii_inc = None
+        mf_chg_qoq = fii_chg_qoq = None
         if prev:
             if latest.get("mf_pct") is not None and prev.get("mf_pct") is not None:
                 mf_inc = latest["mf_pct"] > prev["mf_pct"]
+                mf_chg_qoq = latest["mf_pct"] - prev["mf_pct"]
             if latest.get("fii_pct") is not None and prev.get("fii_pct") is not None:
                 fii_inc = latest["fii_pct"] > prev["fii_pct"]
+                fii_chg_qoq = latest["fii_pct"] - prev["fii_pct"]
+
+        # Module 2 (Phase 2): was it ALSO increasing the quarter before that?
+        # Needs 3 quarters of real history — for most stocks this stays None
+        # for a while yet, since the shareholding cache only started
+        # accumulating recently. Not a bug; just needs time to build up.
+        mf_streak = fii_streak = None
+        if prev and prev2:
+            if (latest.get("mf_pct") is not None and prev.get("mf_pct") is not None
+                    and prev2.get("mf_pct") is not None):
+                mf_streak = mf_inc and (prev["mf_pct"] > prev2["mf_pct"])
+            if (latest.get("fii_pct") is not None and prev.get("fii_pct") is not None
+                    and prev2.get("fii_pct") is not None):
+                fii_streak = fii_inc and (prev["fii_pct"] > prev2["fii_pct"])
 
         out[sym] = {
             "mf_pct": latest.get("mf_pct"),
@@ -357,6 +376,10 @@ def get_shareholding_trends(nse_symbols: list[str]) -> dict:
             "fii_pct_prev": prev.get("fii_pct") if prev else None,
             "mf_holding_increasing": mf_inc,
             "fii_holding_increasing": fii_inc,
+            "mf_holding_change_qoq": mf_chg_qoq,
+            "fii_holding_change_qoq": fii_chg_qoq,
+            "mf_increasing_2q_streak": mf_streak,
+            "fii_increasing_2q_streak": fii_streak,
             "quarter_end": latest.get("quarter_end"),
             "data_quality": "ok" if (latest.get("mf_pct") is not None and latest.get("fii_pct") is not None) else "partial",
         }

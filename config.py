@@ -108,6 +108,15 @@ SECTOR_LEADER_SCORE_RANK_3 = 5
 SECTOR_LEADER_TOP_N_FOR_FLAG = 3     # flag_sector_leader fires for ranks 1-3
 SECTOR_LEADER_TOP_N_FOR_TAB = 5      # the SECTOR_LEADERS tab shows top 5 per sector
 
+# --- Module 2 extension (Phase 2): Institutional Accumulation scoring ---
+# MF and FII each contribute UP TO 10 points (not 5+10=15 stacked — a
+# 2-quarter streak already implies the 1-quarter signal, so the streak tier
+# REPLACES rather than adds to the single-quarter tier). MF max 10 + FII
+# max 10 = 20 total, matching the original spec's "Maximum = 20".
+INSTITUTIONAL_SCORE_SINGLE_QTR_POINTS = 5
+INSTITUTIONAL_SCORE_TWO_QTR_STREAK_POINTS = 10
+INSTITUTIONAL_ACCUMULATION_FLAG_THRESHOLD = 10   # flag fires when score > this
+
 # ----------------------------------------------------------------------------
 # INDICATOR PARAMETERS
 # ----------------------------------------------------------------------------

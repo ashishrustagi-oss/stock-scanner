@@ -123,8 +123,15 @@ def process_universe(label: str, universe_df: pd.DataFrame, index_ticker: str) -
             "mf_holding_pct", "fii_holding_pct", "mf_holding_pct_prev_qtr", "fii_holding_pct_prev_qtr",
             "mf_holding_increasing", "fii_holding_increasing", "shareholding_quarter_end",
             "shareholding_data_quality", "flag_mf_increasing", "flag_fii_increasing",
+            "mf_holding_change_qoq", "fii_holding_change_qoq",
+            "mf_increasing_2q_streak", "fii_increasing_2q_streak",
         ]:
             metrics_df[col] = None
+
+    # Phase 2 (Module 2 extension): institutional accumulation scoring.
+    # Handles the US branch gracefully too (all-None columns above just
+    # produce a NaN score / blank flag, not an error).
+    metrics_df = sc.compute_institutional_accumulation_score(metrics_df)
 
     metrics_df["universe"] = label
     metrics_df = metrics_df.sort_values("composite_score", ascending=False).reset_index(drop=True)
@@ -147,6 +154,7 @@ DISPLAY_COLUMNS = [
     "flag_compression", "flag_ema_alignment", "flag_near_breakout",
     # Phase 1 (Elite Compounder Discovery v2.0) — additional headline flags
     "flag_rs_top_decile", "flag_trend_birth", "flag_monthly_bullish", "flag_sector_leader",
+    "flag_institutional_accumulation",
     # Original sub-scores
     "score_obv", "score_macd_weekly", "score_macd_daily", "score_trend", "score_rs",
     # Elite Compounder sub-scores
@@ -179,8 +187,11 @@ DISPLAY_COLUMNS = [
     "sales_cagr", "profit_cagr", "roce", "debt_equity", "data_quality",
     # MF/FII shareholding trend (NSE-only, informational — see shareholding.py)
     "mf_holding_pct", "mf_holding_pct_prev_qtr", "mf_holding_increasing", "flag_mf_increasing",
+    "mf_holding_change_qoq", "mf_increasing_2q_streak",
     "fii_holding_pct", "fii_holding_pct_prev_qtr", "fii_holding_increasing", "flag_fii_increasing",
+    "fii_holding_change_qoq", "fii_increasing_2q_streak",
     "shareholding_quarter_end", "shareholding_data_quality",
+    "institutional_accumulation_score",
     # Phase 1 (Elite Compounder Discovery v2.0) — detail columns behind the headline flags above
     "rs_rank", "rs_rank_score",
     "trend_birth_flag", "trend_birth_score",

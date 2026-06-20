@@ -408,3 +408,60 @@ def compute_phase1_additions(df: pd.DataFrame) -> pd.DataFrame:
     df = compute_monthly_trend_score(df)
     df = compute_sector_leadership(df)
     return df
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# PHASE 2 — Module 2 extension: Institutional Accumulation scoring
+# NSE-only (same scope as the underlying MF/FII data itself). Builds on the
+# 2-quarter streak detection already computed in shareholding.py.
+# ════════════════════════════════════════════════════════════════════════════
+
+def compute_institutional_accumulation_score(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    MF contributes up to 10 points, FII up to 10 points (max 20 total):
+      - 2-quarter increasing streak -> 10 points (this tier REPLACES the
+        single-quarter tier rather than stacking with it, since a 2-quarter
+        streak already implies the latest quarter was increasing too)
+      - just the latest quarter increasing (no 3rd quarter on file yet, or
+        the streak broke) -> 5 points
+      - not increasing, or insufficient history -> 0
+    flag_institutional_accumulation fires when the combined score exceeds
+    INSTITUTIONAL_ACCUMULATION_FLAG_THRESHOLD (default 10) — i.e. needs at
+    least one side on a real 2-quarter streak, not just both sides nudging
+    up one quarter each.
+    """
+    df = df.copy()
+
+    def _side_points(streak, single_qtr):
+        if streak is True:
+            return config.INSTITUTIONAL_SCORE_TWO_QTR_STREAK_POINTS
+        if single_qtr is True:
+            return config.INSTITUTIONAL_SCORE_SINGLE_QTR_POINTS
+        if streak is None and single_qtr is None:
+            return np.nan   # no shareholding data at all for this stock
+        return 0
+
+    if "mf_increasing_2q_streak" not in df.columns:
+        # US universe (or any frame without shareholding columns merged in) —
+        # nothing to score, return unchanged rather than erroring.
+        df["institutional_accumulation_score"] = np.nan
+        df["flag_institutional_accumulation"] = ""
+        return df
+
+    mf_points = df.apply(
+        lambda r: _side_points(r.get("mf_increasing_2q_streak"), r.get("mf_holding_increasing")), axis=1
+    )
+    fii_points = df.apply(
+        lambda r: _side_points(r.get("fii_increasing_2q_streak"), r.get("fii_holding_increasing")), axis=1
+    )
+
+    df["institutional_accumulation_score"] = mf_points.fillna(0) + fii_points.fillna(0)
+    # ...but if BOTH sides had zero underlying data, the total should read as
+    # genuinely missing rather than a misleadingly confident "0".
+    both_missing = mf_points.isna() & fii_points.isna()
+    df.loc[both_missing, "institutional_accumulation_score"] = np.nan
+
+    df["flag_institutional_accumulation"] = df["institutional_accumulation_score"].apply(
+        lambda s: "🟢" if (not pd.isna(s) and s > config.INSTITUTIONAL_ACCUMULATION_FLAG_THRESHOLD) else ""
+    )
+    return df
