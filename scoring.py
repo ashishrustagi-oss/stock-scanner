@@ -465,3 +465,56 @@ def compute_institutional_accumulation_score(df: pd.DataFrame) -> pd.DataFrame:
         lambda s: "🟢" if (not pd.isna(s) and s > config.INSTITUTIONAL_ACCUMULATION_FLAG_THRESHOLD) else ""
     )
     return df
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# PHASE 3 — Module 1: Earnings Acceleration Engine
+# Built on quarter-over-quarter (not year-over-year) growth — see the
+# detailed rationale in fundamentals.py's _extract_earnings_acceleration().
+# Applies to both NSE and US (yfinance quarterly statements are available
+# for both universes, unlike the NSE-only MF/FII shareholding data).
+# ════════════════════════════════════════════════════════════════════════════
+
+def compute_earnings_acceleration_score(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    EPS acceleration contributes up to 10 points, Revenue acceleration up
+    to 10 points — these stack (unlike Module 2's MF/FII tiers) since
+    they're independent underlying metrics, not two granularities of the
+    same signal. Max 20, matching the original spec.
+    """
+    df = df.copy()
+
+    if "eps_acceleration" not in df.columns:
+        df["earnings_acceleration_score"] = np.nan
+        df["flag_earnings_accelerating"] = ""
+        return df
+
+    def _eps_points(accel):
+        if pd.isna(accel):
+            return np.nan
+        if accel > config.EARNINGS_ACCEL_EPS_THRESHOLD_HIGH:
+            return config.EARNINGS_ACCEL_EPS_POINTS_HIGH
+        if accel > config.EARNINGS_ACCEL_EPS_THRESHOLD_MID:
+            return config.EARNINGS_ACCEL_EPS_POINTS_MID
+        return 0
+
+    def _revenue_points(accel):
+        if pd.isna(accel):
+            return np.nan
+        if accel > config.EARNINGS_ACCEL_REVENUE_THRESHOLD_HIGH:
+            return config.EARNINGS_ACCEL_REVENUE_POINTS_HIGH
+        if accel > config.EARNINGS_ACCEL_REVENUE_THRESHOLD_MID:
+            return config.EARNINGS_ACCEL_REVENUE_POINTS_MID
+        return 0
+
+    eps_points = df["eps_acceleration"].apply(_eps_points)
+    rev_points = df["revenue_acceleration"].apply(_revenue_points)
+
+    df["earnings_acceleration_score"] = eps_points.fillna(0) + rev_points.fillna(0)
+    both_missing = eps_points.isna() & rev_points.isna()
+    df.loc[both_missing, "earnings_acceleration_score"] = np.nan
+
+    df["flag_earnings_accelerating"] = df["earnings_acceleration_score"].apply(
+        lambda s: "🟢" if (not pd.isna(s) and s > config.EARNINGS_ACCELERATION_FLAG_THRESHOLD) else ""
+    )
+    return df

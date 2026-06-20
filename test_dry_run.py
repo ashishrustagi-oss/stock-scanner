@@ -56,8 +56,13 @@ def fake_get_fundamentals(yf_tickers, force_refresh=False):
         roll = rng.rand()
         if roll < 0.1:
             out[t] = {"ticker": t, "sales_cagr": np.nan, "profit_cagr": np.nan, "roce": np.nan,
-                       "debt_equity": np.nan, "data_quality": "missing"}
+                       "debt_equity": np.nan, "data_quality": "missing",
+                       "eps_growth_latest_qtr": np.nan, "eps_growth_prev_qtr": np.nan, "eps_acceleration": np.nan,
+                       "revenue_growth_latest_qtr": np.nan, "revenue_growth_prev_qtr": np.nan,
+                       "revenue_acceleration": np.nan, "earnings_data_quality": "missing"}
         else:
+            eps_lat, eps_prev = rng.normal(15, 12), rng.normal(15, 12)
+            rev_lat, rev_prev = rng.normal(10, 8), rng.normal(10, 8)
             out[t] = {
                 "ticker": t,
                 "sales_cagr": rng.normal(15, 10),
@@ -65,6 +70,11 @@ def fake_get_fundamentals(yf_tickers, force_refresh=False):
                 "roce": rng.normal(18, 8),
                 "debt_equity": abs(rng.normal(0.4, 0.3)),
                 "data_quality": "ok",
+                "eps_growth_latest_qtr": eps_lat, "eps_growth_prev_qtr": eps_prev,
+                "eps_acceleration": eps_lat - eps_prev,
+                "revenue_growth_latest_qtr": rev_lat, "revenue_growth_prev_qtr": rev_prev,
+                "revenue_acceleration": rev_lat - rev_prev,
+                "earnings_data_quality": "ok",
             }
     return out
 

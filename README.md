@@ -344,6 +344,62 @@ up. Not informational only this time, though it's still completely separate
 from `composite_score` and `EliteCompounderScore` — neither existing system
 is touched.
 
+## Phase 3 — Earnings Acceleration Engine (Module 1, highest-risk phase)
+
+Asks: is this stock's quarterly growth rate itself speeding up or slowing
+down — not just "is it growing," but "is growth accelerating."
+
+**New columns:** `eps_growth_latest_qtr` / `eps_growth_prev_qtr` /
+`eps_acceleration`, the same three for revenue, plus
+`earnings_acceleration_score` (0-20) and `flag_earnings_accelerating`.
+Applies to **both** NSE and US (unlike MF/FII — yfinance exposes quarterly
+statements for both universes).
+
+### The key design decision: quarter-over-quarter, not year-over-year
+
+True earnings acceleration in professional research usually compares this
+quarter's YoY growth rate to last quarter's YoY growth rate — which needs
+**6 quarters** of history (current + prior, each compared to its own
+same-quarter-last-year). Yahoo Finance's quarterly statements via yfinance
+typically only expose ~4-5 trailing quarters, which usually isn't enough
+for that.
+
+So this uses **quarter-over-quarter (QoQ)** growth instead — comparing each
+quarter only to the one immediately before it, needing just 3 quarters of
+history (much more likely to actually be available). The trade-off:
+**QoQ is sensitive to seasonality.** A retailer's Q4-vs-Q3 will look
+artificially strong every single year purely because of the holiday
+quarter, regardless of whether the underlying business is actually
+improving. This is a genuine, known limitation — not a hidden bug — and
+worth keeping in mind especially for seasonal businesses (retail, certain
+consumer names). If you get access to a data source with deeper quarterly
+history later, switching to true YoY-based acceleration would be a
+meaningful upgrade — ask and I can wire it in.
+
+### Scoring
+
+EPS acceleration and revenue acceleration are independent signals and **do
+stack** here (unlike Module 2's MF/FII tiers, which don't) — max 10 + max
+10 = 20, matching the original spec directly with no ambiguity to resolve.
+
+| Signal | Threshold | Points |
+|---|---|---|
+| EPS acceleration | >20 percentage points | +10 |
+| EPS acceleration | 10-20 points | +5 |
+| Revenue acceleration | >15 percentage points | +10 |
+| Revenue acceleration | 5-15 points | +5 |
+
+`flag_earnings_accelerating` fires when the combined score exceeds 10.
+
+### Realistic expectation
+
+Tested against synthetic data shaped exactly like yfinance's real quarterly
+statement format (verified the math by hand). What I can't verify from here
+is whether yfinance's actual field names ("Diluted EPS" vs "Basic EPS") and
+quarter depth hold up the same way across hundreds of real NSE/US tickers —
+check `earnings_data_quality` after the first live run; if it's mostly
+`missing`, send me the pattern and we'll adjust the field-name fallbacks.
+
 ## Known limitations — read before relying on this
 
 - **NSE fundamental coverage via Yahoo Finance is patchy.** Many Indian

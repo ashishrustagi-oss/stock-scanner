@@ -117,6 +117,19 @@ INSTITUTIONAL_SCORE_SINGLE_QTR_POINTS = 5
 INSTITUTIONAL_SCORE_TWO_QTR_STREAK_POINTS = 10
 INSTITUTIONAL_ACCUMULATION_FLAG_THRESHOLD = 10   # flag fires when score > this
 
+# --- Module 1 (Phase 3): Earnings Acceleration Engine ---
+# EPS and Revenue acceleration are independent signals and DO stack here
+# (unlike Module 2's MF/FII tiers) — max 10 + max 10 = 20, matching the spec.
+EARNINGS_ACCEL_EPS_THRESHOLD_HIGH = 20.0    # EPS acceleration >20% -> +10
+EARNINGS_ACCEL_EPS_POINTS_HIGH = 10
+EARNINGS_ACCEL_EPS_THRESHOLD_MID = 10.0     # 10-20% -> +5
+EARNINGS_ACCEL_EPS_POINTS_MID = 5
+EARNINGS_ACCEL_REVENUE_THRESHOLD_HIGH = 15.0   # Revenue acceleration >15% -> +10
+EARNINGS_ACCEL_REVENUE_POINTS_HIGH = 10
+EARNINGS_ACCEL_REVENUE_THRESHOLD_MID = 5.0     # 5-15% -> +5
+EARNINGS_ACCEL_REVENUE_POINTS_MID = 5
+EARNINGS_ACCELERATION_FLAG_THRESHOLD = 10   # flag fires when score > this
+
 # ----------------------------------------------------------------------------
 # INDICATOR PARAMETERS
 # ----------------------------------------------------------------------------

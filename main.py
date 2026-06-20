@@ -133,6 +133,10 @@ def process_universe(label: str, universe_df: pd.DataFrame, index_ticker: str) -
     # produce a NaN score / blank flag, not an error).
     metrics_df = sc.compute_institutional_accumulation_score(metrics_df)
 
+    # Phase 3 (Module 1): earnings acceleration — applies to BOTH NSE and US
+    # (yfinance quarterly statements are available for both, unlike MF/FII).
+    metrics_df = sc.compute_earnings_acceleration_score(metrics_df)
+
     metrics_df["universe"] = label
     metrics_df = metrics_df.sort_values("composite_score", ascending=False).reset_index(drop=True)
 
@@ -154,7 +158,7 @@ DISPLAY_COLUMNS = [
     "flag_compression", "flag_ema_alignment", "flag_near_breakout",
     # Phase 1 (Elite Compounder Discovery v2.0) — additional headline flags
     "flag_rs_top_decile", "flag_trend_birth", "flag_monthly_bullish", "flag_sector_leader",
-    "flag_institutional_accumulation",
+    "flag_institutional_accumulation", "flag_earnings_accelerating",
     # Original sub-scores
     "score_obv", "score_macd_weekly", "score_macd_daily", "score_trend", "score_rs",
     # Elite Compounder sub-scores
@@ -185,6 +189,10 @@ DISPLAY_COLUMNS = [
     "range_compression_ratio", "volatility_compression",
     # Fundamentals
     "sales_cagr", "profit_cagr", "roce", "debt_equity", "data_quality",
+    # Earnings Acceleration (Phase 3, Module 1) — QoQ-based, see README for the YoY-vs-QoQ trade-off
+    "eps_growth_latest_qtr", "eps_growth_prev_qtr", "eps_acceleration",
+    "revenue_growth_latest_qtr", "revenue_growth_prev_qtr", "revenue_acceleration",
+    "earnings_acceleration_score", "earnings_data_quality",
     # MF/FII shareholding trend (NSE-only, informational — see shareholding.py)
     "mf_holding_pct", "mf_holding_pct_prev_qtr", "mf_holding_increasing", "flag_mf_increasing",
     "mf_holding_change_qoq", "mf_increasing_2q_streak",
