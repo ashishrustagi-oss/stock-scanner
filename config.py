@@ -62,6 +62,14 @@ SHAREHOLDING_MAX_RUN_SECONDS = 600     # hard stop at 10 min regardless of count
 SHAREHOLDING_SAVE_EVERY_N = 15         # incremental cache checkpoint, so a cancelled run loses minimal progress
 
 # ----------------------------------------------------------------------------
+# MY PORTFOLIO (manually-imported Zerodha holdings — see portfolio.py)
+# ----------------------------------------------------------------------------
+# Tab where you import your Zerodha holdings XLSX via Google Sheets'
+# File > Import. This script only ever READS this tab, never writes to it,
+# so re-importing whenever you trade never conflicts with anything here.
+MY_HOLDINGS_TAB_NAME = "My_Holdings"
+
+# ----------------------------------------------------------------------------
 # INDICATOR PARAMETERS
 # ----------------------------------------------------------------------------
 OBV_SLOPE_SHORT_WINDOW = 20
@@ -276,4 +284,5 @@ SHEET_TABS = {
     "category_a": "Category_A_Elite_Compounders",
     "category_b": "Category_B_Emerging_Leaders",
     "category_c": "Category_C_Watchlist",
+    "my_portfolio": "My_Portfolio_Scored",
 }

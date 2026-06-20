@@ -118,11 +118,13 @@ def export_to_sheets(tabs: dict[str, pd.DataFrame]):
             logger.warning("Could not apply sort/filter dropdowns on '%s': %s", tab_name, exc)
 
         # Group detail columns (R onward) into a collapsible outline. Only
-        # applies to tabs wide enough to have a "detail" section at all
-        # (Run_Log and similar narrow tabs are skipped). Re-applying each
-        # run: delete any existing group first so we don't stack duplicate/
-        # overlapping groups on top of each other over time.
-        if n_cols > HEADLINE_COLUMN_COUNT:
+        # applies to the wide scan tabs (NSE/US full scan, Top20, Elite/
+        # Emerging/Exit, Category A/B/C) where columns A-Q are the headline
+        # view. The portfolio tab has a different, narrower layout where the
+        # live-price columns near the end should stay visible, so it's
+        # excluded here. Re-applying each run: delete any existing group
+        # first so we don't stack duplicate/overlapping groups over time.
+        if n_cols > HEADLINE_COLUMN_COUNT and tab_name != config.SHEET_TABS.get("my_portfolio"):
             start_idx = HEADLINE_COLUMN_COUNT  # 0-indexed, so this IS column R (18th, 1-indexed)
             end_idx = n_cols                    # 0-indexed exclusive end == last column inclusive
             try:

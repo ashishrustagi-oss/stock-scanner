@@ -206,7 +206,55 @@ at all — if most rows show `missing`, send me the Actions log and we'll fix
 it the same way we fixed the sector mapping, likely needing 2-3 rounds given
 the added complexity of PDF/XBRL parsing vs. the simple CSVs used elsewhere.
 
+## My Portfolio — your actual Zerodha holdings, scored
+
+A separate tab (`My_Portfolio_Scored`) that takes your real holdings and runs
+them through the exact same scoring pipeline as the NSE500/S&P500 scan —
+composite score, category, EliteCompounderScore, OBV/Supertrend/MACD
+signals, plus your invested value, current value, and P&L%.
+
+### One-time setup
+
+1. In Zerodha Console, go to **Holdings → Export** and download the XLSX.
+2. In your Google Sheet, go to **File → Import**.
+3. Click **Upload**, select the downloaded XLSX.
+4. Choose **Insert new sheet(s)**, then click **Import data**.
+5. Rename the newly-created tab to exactly `My_Holdings` (right-click the
+   tab → Rename).
+
+That's it — the next scheduled run will pick it up automatically and create
+`My_Portfolio_Scored`.
+
+### Updating your holdings later
+
+Whenever you trade, just repeat steps 1-4 above (File → Import → Replace
+current sheet, selecting your existing `My_Holdings` tab as the target this
+time). This script only ever **reads** `My_Holdings`, never writes to it, so
+re-importing never conflicts with anything automated here.
+
+### How scoring works for your holdings
+
+- **Already in the NSE500 scan** (true for most large/mid-cap holdings):
+  full treatment — composite_score, EliteCompounderScore, all the same
+  signals as the main scan, zero extra cost since it's already computed.
+- **Not in the top-500 scan universe** (smaller-cap holdings): technical
+  indicators are still fetched and computed fresh (OBV, MACD, Supertrend,
+  RS vs Nifty), but `composite_score` and `EliteCompounderScore` show
+  "Outside scan universe" instead of a number — both scores are
+  cross-sectional percentile rankings, which are statistically meaningless
+  computed against a peer group of one or two stocks. Showing a fake number
+  there would be misleading rather than informative.
+
+### Live price
+
+`live_price` and `live_day_change_pct` are `GOOGLEFINANCE()` formulas written
+into the sheet — once written, they keep updating live in your browser
+independent of the daily script run. Assumes NSE-listed holdings (`NSE:`
+prefix); if you hold US stocks too, you'd want to adjust those two formulas
+manually for those specific rows.
+
 ## Known limitations — read before relying on this
+
 
 - **NSE fundamental coverage via Yahoo Finance is patchy.** Many Indian
   mid/small-caps have incomplete income statement / balance sheet data on
