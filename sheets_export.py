@@ -10,6 +10,10 @@ Every tab also gets, automatically and on every run:
   - A basic filter applied across the full data range, which gives every
     column a dropdown arrow for sorting ascending/descending or filtering
     by value — built into Sheets, no formulas needed.
+  - Detail/sub-score columns (column R onward — everything past the
+    headline ticker/score/flag columns) grouped into a collapsible outline,
+    so the sheet opens clean but the underlying detail is one click away
+    via the small [-] toggle that appears above column R.
 
 Requires:
   - A Google Cloud service account with the Sheets API (and Drive API, for
@@ -45,6 +49,13 @@ HEADER_FORMAT = {
     },
     "horizontalAlignment": "CENTER",
 }
+
+# Columns A through Q (1-17) are the headline view: ticker, name, sector,
+# close, composite_score, category, EliteCompounderScore, elite_category,
+# RS_vs_Broad_Index_pct, and the visual flags. Column R onward is every
+# detailed sub-score and raw indicator value behind those headlines — grouped
+# into a collapsible outline rather than shown flat.
+HEADLINE_COLUMN_COUNT = 17
 
 
 def _get_client() -> gspread.Client:
@@ -105,5 +116,22 @@ def export_to_sheets(tabs: dict[str, pd.DataFrame]):
             worksheet.set_basic_filter()
         except Exception as exc:  # noqa: BLE001
             logger.warning("Could not apply sort/filter dropdowns on '%s': %s", tab_name, exc)
+
+        # Group detail columns (R onward) into a collapsible outline. Only
+        # applies to tabs wide enough to have a "detail" section at all
+        # (Run_Log and similar narrow tabs are skipped). Re-applying each
+        # run: delete any existing group first so we don't stack duplicate/
+        # overlapping groups on top of each other over time.
+        if n_cols > HEADLINE_COLUMN_COUNT:
+            start_idx = HEADLINE_COLUMN_COUNT  # 0-indexed, so this IS column R (18th, 1-indexed)
+            end_idx = n_cols                    # 0-indexed exclusive end == last column inclusive
+            try:
+                worksheet.delete_dimension_group_columns(start_idx, end_idx)
+            except Exception:  # noqa: BLE001 - fine if there wasn't a group yet
+                pass
+            try:
+                worksheet.add_dimension_group_columns(start_idx, end_idx)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Could not group detail columns on '%s': %s", tab_name, exc)
 
         logger.info("Exported %d rows to tab '%s'", len(df_out), tab_name)

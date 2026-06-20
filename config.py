@@ -53,6 +53,13 @@ NSE_SHAREHOLDING_API_URL = "https://www.nseindia.com/api/corporate-shareholding-
 SHAREHOLDING_CACHE_PATH = "cache/shareholding_history.json"
 SHAREHOLDING_CACHE_MAX_AGE_DAYS = 75   # ~quarterly; avoids re-fetching every day
 SHAREHOLDING_SLEEP_SECONDS = 1.5       # gentle pacing against a fragile endpoint
+# Learned from a real run: NSE rate-limits hard after ~300 sequential
+# requests in one burst (observed an 8x slowdown). Cap how much this module
+# attempts per run — full ~500-ticker coverage builds up over several days,
+# which is fine since the underlying data only changes quarterly anyway.
+SHAREHOLDING_MAX_FETCHES_PER_RUN = 60
+SHAREHOLDING_MAX_RUN_SECONDS = 600     # hard stop at 10 min regardless of count, protects total workflow time
+SHAREHOLDING_SAVE_EVERY_N = 15         # incremental cache checkpoint, so a cancelled run loses minimal progress
 
 # ----------------------------------------------------------------------------
 # INDICATOR PARAMETERS

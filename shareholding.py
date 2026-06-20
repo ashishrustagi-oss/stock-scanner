@@ -243,6 +243,15 @@ def get_shareholding_trends(nse_symbols: list[str]) -> dict:
     Only re-fetches a symbol if its cached entry is missing or older than
     SHAREHOLDING_CACHE_MAX_AGE_DAYS — this data only changes quarterly, so
     daily re-fetching would be wasteful and hammer NSE for no reason.
+
+    IMPORTANT — learned from a real run: NSE rate-limits hard after roughly
+    300 sequential requests in one burst (observed an 8x slowdown). Rather
+    than try to fetch all ~500 NSE tickers in a single run, this is
+    deliberately budget-capped per run (SHAREHOLDING_MAX_FETCHES_PER_RUN) and
+    time-capped (SHAREHOLDING_MAX_RUN_SECONDS) — full coverage builds up over
+    several days instead, which is completely fine since this data only
+    changes quarterly anyway. Progress is also saved incrementally so a
+    cancelled or timed-out run never loses what it already fetched.
     """
     history = _load_history()
     today = datetime.date.today()
@@ -261,16 +270,38 @@ def get_shareholding_trends(nse_symbols: list[str]) -> dict:
         if age_days > config.SHAREHOLDING_CACHE_MAX_AGE_DAYS:
             to_fetch.append(sym)
 
-    logger.info("Shareholding: %d cached/fresh, %d to fetch", len(nse_symbols) - len(to_fetch), len(to_fetch))
+    # Prioritize symbols with NO history at all over ones just due for a
+    # refresh — first-time coverage is more valuable than re-confirming a
+    # value we already have.
+    to_fetch.sort(key=lambda s: 0 if not history.get(s) else 1)
+
+    total_due = len(to_fetch)
+    to_fetch = to_fetch[: config.SHAREHOLDING_MAX_FETCHES_PER_RUN]
+    logger.info(
+        "Shareholding: %d cached/fresh, %d due for fetch, processing %d this run (budget-capped)",
+        len(nse_symbols) - total_due, total_due, len(to_fetch),
+    )
 
     if to_fetch:
         session = _get_session()
+        start_time = time.time()
+        processed = 0
+
         for i, sym in enumerate(to_fetch):
+            if time.time() - start_time > config.SHAREHOLDING_MAX_RUN_SECONDS:
+                logger.warning(
+                    "Shareholding fetch hit the %ds time budget after %d/%d — "
+                    "stopping early, remainder will be picked up on a future run",
+                    config.SHAREHOLDING_MAX_RUN_SECONDS, i, len(to_fetch),
+                )
+                break
+
             result = _fetch_one(sym, session)
+            entries = history.setdefault(sym, [])
+            quarter_end = result["quarter_end"]
+            already_have = any(e.get("quarter_end") == quarter_end for e in entries) if quarter_end else False
+
             if result["mf_pct"] is not None or result["fii_pct"] is not None:
-                entries = history.setdefault(sym, [])
-                quarter_end = result["quarter_end"]
-                already_have = any(e.get("quarter_end") == quarter_end for e in entries)
                 if not already_have:
                     entries.append({
                         "quarter_end": quarter_end,
@@ -279,10 +310,24 @@ def get_shareholding_trends(nse_symbols: list[str]) -> dict:
                         "fetched_on": today.isoformat(),
                     })
                     entries.sort(key=lambda e: e.get("quarter_end") or "")
-            if (i + 1) % 50 == 0:
-                logger.info("Shareholding fetch progress: %d/%d", i + 1, len(to_fetch))
+            else:
+                # Record the attempt even on failure (with no figures), so a
+                # permanently-failing ticker is retried after the normal
+                # refresh interval instead of every single run forever.
+                entries.append({
+                    "quarter_end": None, "mf_pct": None, "fii_pct": None,
+                    "fetched_on": today.isoformat(),
+                })
+
+            processed += 1
+            if processed % config.SHAREHOLDING_SAVE_EVERY_N == 0:
+                _save_history(history)
+                logger.info("Shareholding fetch progress: %d/%d (saved)", processed, len(to_fetch))
+
             time.sleep(config.SHAREHOLDING_SLEEP_SECONDS)
-        _save_history(history)
+
+        _save_history(history)  # final save covers any remainder since the last checkpoint
+        logger.info("Shareholding fetch finished this run: %d processed and saved", processed)
 
     out = {}
     for sym in nse_symbols:
