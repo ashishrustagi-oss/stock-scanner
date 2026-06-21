@@ -97,6 +97,11 @@ def process_universe(label: str, universe_df: pd.DataFrame, index_ticker: str) -
     # Entirely additive: built only from columns already computed above.
     metrics_df = sc.compute_phase1_additions(metrics_df)
 
+    # Chart study additions: Trend Death (Distribution Detection) + OBV-price
+    # divergence — see README for the rationale behind both.
+    metrics_df = sc.compute_trend_death(metrics_df)
+    metrics_df = sc.compute_obv_divergence_flag(metrics_df)
+
     # MF/FII shareholding trend — NSE-specific (SEBI quarterly filing concept,
     # no equivalent free data source built for US institutional holdings
     # here; US uses a different framework — SEC 13F — out of scope).
@@ -158,6 +163,7 @@ DISPLAY_COLUMNS = [
     "flag_compression", "flag_ema_alignment", "flag_near_breakout",
     # Phase 1 (Elite Compounder Discovery v2.0) — additional headline flags
     "flag_rs_top_decile", "flag_trend_birth", "flag_monthly_bullish", "flag_sector_leader",
+    "flag_trend_death", "flag_bullish_obv_divergence",
     "flag_institutional_accumulation", "flag_earnings_accelerating",
     # Original sub-scores
     "score_obv", "score_macd_weekly", "score_macd_daily", "score_trend", "score_rs",
@@ -206,6 +212,9 @@ DISPLAY_COLUMNS = [
     "monthly_macd", "monthly_signal", "monthly_hist", "monthly_ema20", "monthly_ema50",
     "monthly_bullish", "monthly_trend_score",
     "sector_rank", "sector_leader_score",
+    # Chart study additions
+    "macd_early_bearish", "trend_death_flag", "trend_death_score",
+    "obv_price_divergence",
 ]
 
 
@@ -271,8 +280,12 @@ def main():
             combined[combined["sector_rank"] <= config.SECTOR_LEADER_TOP_N_FOR_TAB]
             .sort_values(["universe", "sector", "sector_rank"])
         )
+        trend_death_tab = view(
+            combined[combined["trend_death_flag"] == 1.0]
+            .sort_values("trend_death_score", ascending=False)
+        )
     else:
-        trend_birth_tab = sector_leaders_tab = pd.DataFrame()
+        trend_birth_tab = sector_leaders_tab = trend_death_tab = pd.DataFrame()
 
     run_log = pd.DataFrame([{
         "run_timestamp_utc": run_started.isoformat(),
@@ -291,6 +304,7 @@ def main():
         # Phase 1 counts
         "trend_birth_count": len(trend_birth_tab),
         "sector_leaders_count": len(sector_leaders_tab),
+        "trend_death_count": len(trend_death_tab),
     }])
 
     # ── My Portfolio (manually-imported Zerodha holdings) — additive, never
@@ -320,6 +334,7 @@ def main():
         # Phase 1 (Elite Compounder Discovery v2.0) dashboards
         config.SHEET_TABS["trend_birth"]: trend_birth_tab,
         config.SHEET_TABS["sector_leaders"]: sector_leaders_tab,
+        config.SHEET_TABS["trend_death"]: trend_death_tab,
     }
 
     # Only add the portfolio tab if there was something to show — avoids

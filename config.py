@@ -130,6 +130,42 @@ EARNINGS_ACCEL_REVENUE_THRESHOLD_MID = 5.0     # 5-15% -> +5
 EARNINGS_ACCEL_REVENUE_POINTS_MID = 5
 EARNINGS_ACCELERATION_FLAG_THRESHOLD = 10   # flag fires when score > this
 
+# ════════════════════════════════════════════════════════════════════════════
+# CHART STUDY ADDITIONS — Trend Death (Distribution Detection) + OBV divergence
+# Built from studying real winner charts (BEL, Bharat Forge, CAMS, MTAR, etc.)
+# — see README for the qualitative analysis behind these two modules.
+# Entirely additive: standalone scores, never folded into composite_score or
+# EliteCompounderScore, consistent with every other phase in this project.
+# ════════════════════════════════════════════════════════════════════════════
+
+# --- Trend Death / Distribution Detection (mirror of Trend Birth) ---
+# Tighter ceiling than Trend Birth's floor (-25%) — this is deliberately
+# meant to catch the START of a top, while the stock is still relatively
+# close to its highs, not stocks that have already broken down hard.
+TREND_DEATH_PCT_FROM_HIGH_CEILING = -15.0
+TREND_DEATH_SCORE_POINTS = 10
+
+# --- OBV-Price Divergence (the CAMS-chart pattern) ---
+OBV_DIVERGENCE_MIN_PULLBACK_PCT = -5.0    # need at least a 5% pullback for divergence to be meaningful
+OBV_DIVERGENCE_BULLISH_THRESHOLD = 10.0   # percentage points of divergence needed to flag as bullish
+
+# ════════════════════════════════════════════════════════════════════════════
+# BACKTEST FRAMEWORK — see backtest.py module docstring for full design notes
+# Deliberately conservative defaults — this is far more compute-intensive
+# than the daily scan (every indicator recomputed at every snapshot date).
+# Widen these only after confirming a smaller run completes in reasonable
+# time. Run manually via backtest_workflow.yml, never as part of daily scan.
+# ════════════════════════════════════════════════════════════════════════════
+BACKTEST_UNIVERSE = "NSE500"          # "NSE500" or "SP500" — one at a time
+BACKTEST_MAX_TICKERS = 100            # None = full universe (slow); start small
+BACKTEST_LOOKBACK_YEARS = 3           # how far back snapshot dates go
+BACKTEST_SNAPSHOT_FREQ = "MS"         # "MS" = monthly (1st of month); "W" = weekly (much slower)
+BACKTEST_MIN_HISTORY_DAYS = 300       # minimum days of price history needed before a date is usable
+BACKTEST_HORIZONS_DAYS = {
+    "1m": 21, "3m": 63, "6m": 126, "12m": 252,
+}
+BACKTEST_RESULTS_TAB_NAME = "Backtest_Results"
+
 # ----------------------------------------------------------------------------
 # INDICATOR PARAMETERS
 # ----------------------------------------------------------------------------
@@ -348,4 +384,5 @@ SHEET_TABS = {
     "my_portfolio": "My_Portfolio_Scored",
     "trend_birth": "TREND_BIRTH",
     "sector_leaders": "SECTOR_LEADERS",
+    "trend_death": "TREND_DEATH",
 }

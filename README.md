@@ -400,6 +400,103 @@ quarter depth hold up the same way across hundreds of real NSE/US tickers —
 check `earnings_data_quality` after the first live run; if it's mostly
 `missing`, send me the pattern and we'll adjust the field-name fallbacks.
 
+## Chart Study Additions — Trend Death + OBV-Price Divergence
+
+Built from studying real charts of BEL, Bharat Forge, CAMS, MTAR Tech, CDSL,
+ADANIPORTS, IDFCFIRSTB, JYOTICNC, and Persistent — see the conversation for
+the full visual read. Two new, standalone modules (neither folds into
+composite_score or EliteCompounderScore):
+
+### Trend Death / Distribution Detection
+The mirror image of Trend Birth, for the "exit losers" side of the system:
+fires when price just broke below EMA20, MACD just turned bearish *while
+still above zero* (the topping equivalent of "early bullish below zero"),
+OBV has been falling for 13 weeks, AND the stock is still within 15% of its
+52-week high — deliberately tighter than Trend Birth's -25% floor, since
+this is meant to catch the START of a top while still close to highs, not
+stocks that have already broken down hard. New tab: **TREND_DEATH**.
+Visual flag uses 🔴 (not 🟢) to make it visually distinct as a warning.
+
+### OBV-Price Divergence
+Directly inspired by the CAMS chart, which pulled back ~35% from its highs
+in 2025 without OBV meaningfully declining — buyers didn't actually leave
+even though price dropped. `obv_price_divergence` finds the most recent
+price peak, then compares how much OBV has fallen since that peak to how
+much price has fallen. Positive = bullish (OBV held up better than price).
+`flag_bullish_obv_divergence` only fires if there was a real pullback of at
+least 5% (a stock that hasn't pulled back has nothing to diverge from) and
+the divergence exceeds 10 percentage points.
+
+**Honest framing:** both of these came from reading 8-9 winning charts
+visually, not from a statistical backtest. See the next section for the
+actual rigorous validation tool.
+
+## Backtest Framework — rigorous signal validation, not chart-reading
+
+`backtest.py` is a genuinely separate tool from the daily scan: a
+walk-forward simulation that tests whether any given signal (Trend Birth,
+EliteCompounderScore thresholds, OBV 52w-high, etc.) actually preceded
+real outperformance, across a real universe and many historical dates —
+not just the handful of winning charts that prompted building it.
+
+### How it avoids the trap the chart study couldn't avoid
+
+The chart study only looked at survivors — stocks that already became
+compounders — with no way to tell how many *other* stocks showed the same
+early pattern and went nowhere. This backtest fixes that by testing every
+signal against the **entire universe** (winners, losers, and everything
+in between) across dozens of historical snapshot dates automatically.
+
+### No-lookahead-bias guarantee (the most important property of any backtest)
+
+At each historical "as-of" date, every indicator is computed using ONLY
+price data up to and including that date — exactly what would have been
+knowable at the time. I verified this directly: computed signals on a
+synthetic stock with the full future price history sitting in memory, then
+again with that future data physically removed before computation — the
+two runs produced bit-for-bit identical results. If there were a lookahead
+leak anywhere in the indicator chain, those two scenarios would differ.
+
+### What it measures
+
+For each signal: sample size, mean/median forward return at 1/3/6/12
+months, hit rate (% of instances with a positive forward return), and the
+**excess return vs. the benchmark index over the same dates** — the number
+that actually matters, since a signal that just rides a generally rising
+market isn't adding anything.
+
+### Key simplification
+
+`fundamentally_qualified` is set `True` for every historical row — point-in-
+time historical fundamentals are a much harder data problem than this tool
+needs to solve to be useful. This means the backtest measures the
+**technical signals' predictive power in isolation**, not combined with
+the fundamental gate real-world categorization also requires.
+
+### Running it
+
+This is **far more compute-intensive** than the daily scan (every indicator
+recomputed at every snapshot date) and is **not** part of the daily
+schedule — it has its own workflow (`.github/workflows/backtest_workflow.yml`),
+manual-trigger only. Start small: the defaults in `config.py`
+(`BACKTEST_MAX_TICKERS = 100`, monthly snapshots, 3-year lookback) are
+deliberately conservative. Results land in a new `Backtest_Results` Sheet
+tab and as a downloadable CSV artifact on the GitHub Actions run page.
+Widen `BACKTEST_MAX_TICKERS` / `BACKTEST_LOOKBACK_YEARS` / switch
+`BACKTEST_SNAPSHOT_FREQ` to weekly only after confirming a smaller run
+finishes in a reasonable time — each added ticker and each added snapshot
+multiplies the runtime.
+
+### What I tested vs. what only a real run can tell you
+
+I validated the **mechanics** thoroughly with synthetic data: forward-return
+math is correct, there's no lookahead leakage, and the full pipeline runs
+end-to-end across multiple tickers and dates without errors. What I could
+not test from here (no live data access) is whether any signal actually
+shows real predictive edge on real NSE/US history — that's exactly what
+running this for real will tell you, and it might show some signals here
+don't hold up as well as the chart study suggested. That's the point.
+
 ## Known limitations — read before relying on this
 
 - **NSE fundamental coverage via Yahoo Finance is patchy.** Many Indian

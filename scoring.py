@@ -518,3 +518,63 @@ def compute_earnings_acceleration_score(df: pd.DataFrame) -> pd.DataFrame:
         lambda s: "🟢" if (not pd.isna(s) and s > config.EARNINGS_ACCELERATION_FLAG_THRESHOLD) else ""
     )
     return df
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# CHART STUDY ADDITIONS — Trend Death (Distribution Detection) + OBV divergence
+# Standalone, informational — neither folded into composite_score nor
+# EliteCompounderScore. See README for the chart-study rationale.
+# ════════════════════════════════════════════════════════════════════════════
+
+def compute_trend_death(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Mirror of Trend Birth: price just broke below EMA20, MACD just turned
+    bearish while still above zero, OBV has been falling for 13 weeks, and
+    the stock is still relatively close to its highs (within 15%) rather
+    than already deeply broken down — catches the START of a top, the same
+    way Trend Birth catches the START of a bottom.
+    """
+    df = df.copy()
+
+    def _row_flag(r):
+        vals = [r.get("close"), r.get("ema20"), r.get("macd_early_bearish"),
+                 r.get("obv_slope_13w"), r.get("pct_from_52w_high")]
+        if any(v is None or (isinstance(v, float) and np.isnan(v)) for v in vals):
+            return np.nan
+        return 1.0 if (
+            r["close"] < r["ema20"]
+            and r["macd_early_bearish"] == 1.0
+            and r["obv_slope_13w"] < 0
+            and r["pct_from_52w_high"] > config.TREND_DEATH_PCT_FROM_HIGH_CEILING
+        ) else 0.0
+
+    df["trend_death_flag"] = df.apply(_row_flag, axis=1)
+    df["trend_death_score"] = df["trend_death_flag"].apply(
+        lambda v: config.TREND_DEATH_SCORE_POINTS if v == 1.0 else (0 if v == 0.0 else np.nan)
+    )
+    df["flag_trend_death"] = df["trend_death_flag"].apply(lambda v: "🔴" if v == 1.0 else "")
+    return df
+
+
+def compute_obv_divergence_flag(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Flags the CAMS-chart pattern: price pulled back meaningfully but OBV
+    held up much better than price did — a bullish divergence suggesting
+    the pullback isn't real distribution. Requires a real pullback
+    (pct_from_52w_high below OBV_DIVERGENCE_MIN_PULLBACK_PCT) for the
+    divergence number to be meaningful at all — a stock that hasn't pulled
+    back has nothing to diverge from.
+    """
+    df = df.copy()
+
+    def _flag(r):
+        div = r.get("obv_price_divergence")
+        pullback = r.get("pct_from_52w_high")
+        if div is None or pullback is None or pd.isna(div) or pd.isna(pullback):
+            return ""
+        if pullback > config.OBV_DIVERGENCE_MIN_PULLBACK_PCT:
+            return ""  # hasn't pulled back enough for this to be meaningful
+        return "🟢" if div > config.OBV_DIVERGENCE_BULLISH_THRESHOLD else ""
+
+    df["flag_bullish_obv_divergence"] = df.apply(_flag, axis=1)
+    return df

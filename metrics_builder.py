@@ -70,12 +70,15 @@ def build_metrics_row(
         "obv_26w_high":           ind.is_at_nbar_high(obv_series, config.WEEKS_26_IN_DAYS),
         "obv_slope_13w":          ind.obv_slope(obv_series, config.WEEKS_13_IN_DAYS),
         "obv_slope_26w":          ind.obv_slope(obv_series, config.WEEKS_26_IN_DAYS),
+        "obv_price_divergence":   ind.obv_price_divergence(close, obv_series),
         # ── Daily MACD (original) ──
         "daily_macd":             float(daily_macd.iloc[-1]),
         "daily_signal":           float(daily_signal.iloc[-1]),
         "daily_hist":             float(daily_hist.iloc[-1]),
         # ── Early MACD module ──
         "macd_early_bullish":     ind.macd_early_bullish(daily_macd, daily_signal, config.MACD_EARLY_LOOKBACK_DAYS),
+        # ── Trend Death / Distribution Detection module (mirror of Early MACD) ──
+        "macd_early_bearish":     ind.macd_early_bearish(daily_macd, daily_signal, config.MACD_EARLY_LOOKBACK_DAYS),
         # ── Weekly MACD (original) ──
         "weekly_macd":            float(weekly_macd_s.iloc[-1]) if len(weekly_macd_s) else np.nan,
         "weekly_signal":          float(weekly_signal_s.iloc[-1]) if len(weekly_signal_s) else np.nan,
