@@ -1,6 +1,6 @@
 """
-Dry-run test: monkeypatches data_fetch / fundamentals / sheets_export with
-synthetic data so the full main.py pipeline can be validated without live
+Dry-run test: monkeypatches data_fetch / fundamentals / sector_data / sheets_export
+with synthetic data so the full main.py pipeline can be validated without live
 network access. Not part of the deployed package — delete or ignore in prod.
 """
 import numpy as np
@@ -9,10 +9,13 @@ import pandas as pd
 import config
 import data_fetch
 import fundamentals as fnd
+import sector_data
 import sheets_export
 import universe
 
 np.random.seed(7)
+
+SECTORS = ["Banking", "Information Technology", "Pharmaceuticals", "Automobiles", "Energy"]
 
 
 def fake_price_df(n=400, seed_offset=0):
@@ -32,6 +35,17 @@ def fake_fetch_price_history(yf_tickers):
 
 def fake_fetch_index_history(index_ticker):
     return fake_price_df(seed_offset=999)
+
+
+def fake_get_sector_close_map(universe_label, sector_labels, fallback_close):
+    """Simulates real sector benchmarks for most sectors, with one deliberate fallback."""
+    result = {}
+    for i, s in enumerate(sector_labels):
+        if s == "Energy":  # simulate one sector ticker failing to fetch
+            result[s] = (fallback_close, "FALLBACK_BROAD_INDEX")
+        else:
+            result[s] = (fake_price_df(seed_offset=5000 + i)["Close"], f"FAKE_SECTOR_{i}")
+    return result
 
 
 def fake_get_fundamentals(yf_tickers, force_refresh=False):
@@ -70,7 +84,7 @@ def fake_nse_universe():
         "ticker": tickers,
         "yf_ticker": [t + ".NS" for t in tickers],
         "name": [f"Fake Co {i}" for i in range(40)],
-        "sector": ["TestSector"] * 40,
+        "sector": [SECTORS[i % len(SECTORS)] for i in range(40)],
     })
 
 
@@ -80,7 +94,7 @@ def fake_sp500_universe():
         "ticker": tickers,
         "yf_ticker": tickers,
         "name": [f"US Fake Co {i}" for i in range(40)],
-        "sector": ["TestSector"] * 40,
+        "sector": [SECTORS[i % len(SECTORS)] for i in range(40)],
     })
 
 
@@ -88,6 +102,7 @@ def fake_sp500_universe():
 data_fetch.fetch_price_history = fake_fetch_price_history
 data_fetch.fetch_index_history = fake_fetch_index_history
 fnd.get_fundamentals = fake_get_fundamentals
+sector_data.get_sector_close_map = fake_get_sector_close_map
 sheets_export.export_to_sheets = fake_export_to_sheets
 universe.get_nse500_universe = fake_nse_universe
 universe.get_sp500_universe = fake_sp500_universe
@@ -96,15 +111,30 @@ import main  # noqa: E402  (import after monkeypatch so main uses patched module
 
 main.main()
 
-print("\n=== Sample of NSE500_Full_Scan ===")
+print("\n=== Sample of NSE500_Full_Scan (key Elite columns) ===")
 print(captured_tabs[config.SHEET_TABS["nse_full"]][
-    ["ticker", "composite_score", "category", "fundamentally_qualified", "data_quality"]
+    ["ticker", "composite_score", "EliteCompounderScore", "elite_category",
+     "flag_obv_leader", "flag_rs_leader", "flag_early_macd",
+     "sector_index_source", "category"]
 ].head(10).to_string())
 
-print("\n=== Elite Compounders ===")
+print("\n=== Elite Compounders (original system) ===")
 print(captured_tabs[config.SHEET_TABS["elite"]][["ticker", "universe", "composite_score"]].to_string())
+
+print("\n=== Elite_Compounders_EarlyDetect (NEW strict filter) ===")
+edt = captured_tabs[config.SHEET_TABS["elite_early_detect"]]
+if not edt.empty:
+    print(edt[["ticker", "universe", "EliteCompounderScore", "elite_category"]].to_string())
+else:
+    print("(empty — expected with random synthetic data, strict AND filter is hard to satisfy by chance)")
+
+print("\n=== Category A/B/C counts ===")
+for key in ["category_a", "category_b", "category_c"]:
+    df = captured_tabs[config.SHEET_TABS[key]]
+    print(f"{key}: {len(df)} rows")
 
 print("\n=== Run log ===")
 print(captured_tabs[config.SHEET_TABS["run_log"]].to_string())
 
 print("\nDRY RUN PASSED - no exceptions")
+

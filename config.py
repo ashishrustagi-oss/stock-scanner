@@ -32,7 +32,7 @@ INDEX_TICKER_US = "^GSPC"    # S&P 500 index (use "SPY" if you prefer the ETF)
 # ----------------------------------------------------------------------------
 # DATA FETCH
 # ----------------------------------------------------------------------------
-PRICE_HISTORY_PERIOD = "3y"     # daily history pulled per ticker (needs buffer for weekly MACD warm-up)
+PRICE_HISTORY_PERIOD = "5y"     # bumped from 3y: monthly EMA50 needs ~50 monthly bars to be reasonably stable
 BATCH_SIZE = 75                 # tickers per yfinance batch call
 BATCH_SLEEP_SECONDS = 2         # pause between batches to avoid rate-limiting
 MAX_RETRIES = 3
@@ -41,6 +41,130 @@ RETRY_BACKOFF_SECONDS = 5
 FUNDAMENTALS_MAX_WORKERS = 6    # parallel threads for per-ticker fundamentals calls
 FUNDAMENTALS_REFRESH_WEEKDAY = 0  # 0=Monday. Fundamentals are refetched only on this weekday.
 FUNDAMENTALS_CACHE_PATH = "cache/fundamentals_cache.json"
+
+# ----------------------------------------------------------------------------
+# MF / FII SHAREHOLDING PATTERN (highest-risk module — see shareholding.py)
+# ----------------------------------------------------------------------------
+# Best-effort NSE corporate-filings endpoint for shareholding pattern filings.
+# {symbol} is substituted with the bare NSE symbol (no .NS suffix). This is
+# the single most likely thing to need fixing first if nothing resolves —
+# check the Actions log for the actual HTTP status/response on a failure.
+NSE_SHAREHOLDING_API_URL = "https://www.nseindia.com/api/corporate-shareholding-pattern?index=equities&symbol={symbol}"
+SHAREHOLDING_CACHE_PATH = "cache/shareholding_history.json"
+SHAREHOLDING_CACHE_MAX_AGE_DAYS = 75   # ~quarterly; avoids re-fetching every day
+SHAREHOLDING_SLEEP_SECONDS = 1.5       # gentle pacing against a fragile endpoint
+# Learned from a real run: NSE rate-limits hard after ~300 sequential
+# requests in one burst (observed an 8x slowdown). Cap how much this module
+# attempts per run — full ~500-ticker coverage builds up over several days,
+# which is fine since the underlying data only changes quarterly anyway.
+SHAREHOLDING_MAX_FETCHES_PER_RUN = 60
+SHAREHOLDING_MAX_RUN_SECONDS = 600     # hard stop at 10 min regardless of count, protects total workflow time
+SHAREHOLDING_SAVE_EVERY_N = 15         # incremental cache checkpoint, so a cancelled run loses minimal progress
+
+# ----------------------------------------------------------------------------
+# MY PORTFOLIO (manually-imported Zerodha holdings — see portfolio.py)
+# ----------------------------------------------------------------------------
+# Tab where you import your Zerodha holdings XLSX via Google Sheets'
+# File > Import. This script only ever READS this tab, never writes to it,
+# so re-importing whenever you trade never conflicts with anything here.
+MY_HOLDINGS_TAB_NAME = "My_Holdings"
+
+# ════════════════════════════════════════════════════════════════════════════
+# PHASE 1 — Elite Compounder Discovery System v2.0
+# All built from data already fetched — no new external data sources.
+# Entirely additive; doesn't change composite_score or EliteCompounderScore.
+# ════════════════════════════════════════════════════════════════════════════
+
+# --- Module 3: RS Percentile Rank ---
+# rs_rank is the percentile rank (0-100) of RS_vs_Broad_Index_pct WITHIN the
+# stock's own universe — one column, not split by universe name, since each
+# stock only ever belongs to one universe anyway.
+RS_RANK_SCORE_THRESHOLD_TOP    = 95   # rank > 95 -> +15
+RS_RANK_SCORE_POINTS_TOP       = 15
+RS_RANK_SCORE_THRESHOLD_HIGH   = 90   # rank 90-95 -> +10
+RS_RANK_SCORE_POINTS_HIGH      = 10
+RS_RANK_SCORE_THRESHOLD_MID    = 80   # rank 80-90 -> +5
+RS_RANK_SCORE_POINTS_MID       = 5
+RS_RANK_TOP_DECILE_THRESHOLD   = 90   # flag_rs_top_decile fires above this
+
+# --- Module 4: Trend Birth Detection ---
+TREND_BIRTH_PCT_FROM_HIGH_FLOOR = -25.0   # must be within 25% of 52w high (not deeply broken down)
+TREND_BIRTH_SCORE_POINTS = 10
+
+# --- Module 5: Monthly Trend Confirmation ---
+MONTHLY_EMA_FAST = 20
+MONTHLY_EMA_SLOW = 50
+MONTHLY_TREND_SCORE_POINTS = 10
+
+# --- Module 6: Sector Leadership Engine ---
+# Ranks stocks within their own (universe, sector) group by EliteCompounderScore
+# — chosen because that's the system specifically built for leadership/early
+# detection, and it's already a normalized 0-100 score safe to compare directly
+# within a small group. Change this in scoring.py's compute_sector_leadership()
+# if you'd rather rank by composite_score or pure RS-vs-sector instead.
+SECTOR_LEADER_SCORE_RANK_1 = 15
+SECTOR_LEADER_SCORE_RANK_2 = 10
+SECTOR_LEADER_SCORE_RANK_3 = 5
+SECTOR_LEADER_TOP_N_FOR_FLAG = 3     # flag_sector_leader fires for ranks 1-3
+SECTOR_LEADER_TOP_N_FOR_TAB = 5      # the SECTOR_LEADERS tab shows top 5 per sector
+
+# --- Module 2 extension (Phase 2): Institutional Accumulation scoring ---
+# MF and FII each contribute UP TO 10 points (not 5+10=15 stacked — a
+# 2-quarter streak already implies the 1-quarter signal, so the streak tier
+# REPLACES rather than adds to the single-quarter tier). MF max 10 + FII
+# max 10 = 20 total, matching the original spec's "Maximum = 20".
+INSTITUTIONAL_SCORE_SINGLE_QTR_POINTS = 5
+INSTITUTIONAL_SCORE_TWO_QTR_STREAK_POINTS = 10
+INSTITUTIONAL_ACCUMULATION_FLAG_THRESHOLD = 10   # flag fires when score > this
+
+# --- Module 1 (Phase 3): Earnings Acceleration Engine ---
+# EPS and Revenue acceleration are independent signals and DO stack here
+# (unlike Module 2's MF/FII tiers) — max 10 + max 10 = 20, matching the spec.
+EARNINGS_ACCEL_EPS_THRESHOLD_HIGH = 20.0    # EPS acceleration >20% -> +10
+EARNINGS_ACCEL_EPS_POINTS_HIGH = 10
+EARNINGS_ACCEL_EPS_THRESHOLD_MID = 10.0     # 10-20% -> +5
+EARNINGS_ACCEL_EPS_POINTS_MID = 5
+EARNINGS_ACCEL_REVENUE_THRESHOLD_HIGH = 15.0   # Revenue acceleration >15% -> +10
+EARNINGS_ACCEL_REVENUE_POINTS_HIGH = 10
+EARNINGS_ACCEL_REVENUE_THRESHOLD_MID = 5.0     # 5-15% -> +5
+EARNINGS_ACCEL_REVENUE_POINTS_MID = 5
+EARNINGS_ACCELERATION_FLAG_THRESHOLD = 10   # flag fires when score > this
+
+# ════════════════════════════════════════════════════════════════════════════
+# CHART STUDY ADDITIONS — Trend Death (Distribution Detection) + OBV divergence
+# Built from studying real winner charts (BEL, Bharat Forge, CAMS, MTAR, etc.)
+# — see README for the qualitative analysis behind these two modules.
+# Entirely additive: standalone scores, never folded into composite_score or
+# EliteCompounderScore, consistent with every other phase in this project.
+# ════════════════════════════════════════════════════════════════════════════
+
+# --- Trend Death / Distribution Detection (mirror of Trend Birth) ---
+# Tighter ceiling than Trend Birth's floor (-25%) — this is deliberately
+# meant to catch the START of a top, while the stock is still relatively
+# close to its highs, not stocks that have already broken down hard.
+TREND_DEATH_PCT_FROM_HIGH_CEILING = -15.0
+TREND_DEATH_SCORE_POINTS = 10
+
+# --- OBV-Price Divergence (the CAMS-chart pattern) ---
+OBV_DIVERGENCE_MIN_PULLBACK_PCT = -5.0    # need at least a 5% pullback for divergence to be meaningful
+OBV_DIVERGENCE_BULLISH_THRESHOLD = 10.0   # percentage points of divergence needed to flag as bullish
+
+# ════════════════════════════════════════════════════════════════════════════
+# BACKTEST FRAMEWORK — see backtest.py module docstring for full design notes
+# Deliberately conservative defaults — this is far more compute-intensive
+# than the daily scan (every indicator recomputed at every snapshot date).
+# Widen these only after confirming a smaller run completes in reasonable
+# time. Run manually via backtest_workflow.yml, never as part of daily scan.
+# ════════════════════════════════════════════════════════════════════════════
+BACKTEST_UNIVERSE = "NSE500"          # "NSE500" or "SP500" — one at a time
+BACKTEST_MAX_TICKERS = 300            # None = full universe (slow); widened from 100 after a clean 7m43s test run
+BACKTEST_LOOKBACK_YEARS = 3           # how far back snapshot dates go
+BACKTEST_SNAPSHOT_FREQ = "MS"         # "MS" = monthly (1st of month); "W" = weekly (much slower)
+BACKTEST_MIN_HISTORY_DAYS = 300       # minimum days of price history needed before a date is usable
+BACKTEST_HORIZONS_DAYS = {
+    "1m": 21, "3m": 63, "6m": 126, "12m": 252,
+}
+BACKTEST_RESULTS_TAB_NAME = "Backtest_Results"
 
 # ----------------------------------------------------------------------------
 # INDICATOR PARAMETERS
@@ -77,19 +201,162 @@ WEIGHT_RELATIVE_STRENGTH = 15
 
 assert WEIGHT_OBV + WEIGHT_MACD_WEEKLY + WEIGHT_MACD_DAILY + WEIGHT_TREND + WEIGHT_RELATIVE_STRENGTH == 100
 
-# Sub-weights within the "Trend" bucket (Supertrend slow + fast + EMA20)
-TREND_SUBWEIGHT_SUPERTREND_SLOW = 0.5
-TREND_SUBWEIGHT_SUPERTREND_FAST = 0.25
-TREND_SUBWEIGHT_EMA20 = 0.25
+# Sub-weights within the "Trend" bucket
+# Now includes Weekly Supertrend and Near-52w-High
+TREND_SUBWEIGHT_SUPERTREND_SLOW    = 0.30   # daily supertrend (10,3)
+TREND_SUBWEIGHT_SUPERTREND_FAST    = 0.10   # daily supertrend (2,1)
+TREND_SUBWEIGHT_EMA20              = 0.15   # price vs EMA20
+TREND_SUBWEIGHT_SUPERTREND_WEEKLY  = 0.30   # weekly supertrend (10,3) — higher timeframe confirmation
+TREND_SUBWEIGHT_NEAR_52W_HIGH      = 0.15   # price within 10% of 52-week high
+
+assert abs(
+    TREND_SUBWEIGHT_SUPERTREND_SLOW + TREND_SUBWEIGHT_SUPERTREND_FAST +
+    TREND_SUBWEIGHT_EMA20 + TREND_SUBWEIGHT_SUPERTREND_WEEKLY +
+    TREND_SUBWEIGHT_NEAR_52W_HIGH - 1.0
+) < 1e-9, "Trend sub-weights must sum to 1.0"
+
+# Sub-weights within the "OBV" bucket
+# Now includes OBV 52-week range position
+OBV_SUBWEIGHT_SLOPE_20D     = 0.35   # short-term OBV momentum
+OBV_SUBWEIGHT_SLOPE_50D     = 0.30   # medium-term OBV momentum
+OBV_SUBWEIGHT_52W_RANGE     = 0.35   # OBV position in its own 52-week range
+
+assert abs(
+    OBV_SUBWEIGHT_SLOPE_20D + OBV_SUBWEIGHT_SLOPE_50D + OBV_SUBWEIGHT_52W_RANGE - 1.0
+) < 1e-9, "OBV sub-weights must sum to 1.0"
+
+# Sub-weights within the "Weekly MACD" bucket
+# Now includes the binary positive/negative flag alongside the ranked histogram
+MACD_WEEKLY_SUBWEIGHT_RANKED   = 0.60   # cross-sectional rank of histogram magnitude
+MACD_WEEKLY_SUBWEIGHT_POSITIVE = 0.40   # binary: histogram > 0 (0 or 100)
+
+assert abs(MACD_WEEKLY_SUBWEIGHT_RANKED + MACD_WEEKLY_SUBWEIGHT_POSITIVE - 1.0) < 1e-9
+
+# Threshold for "near 52-week high" (percentage below high, expressed as positive number)
+NEAR_52W_HIGH_THRESHOLD_PCT = 10.0
+
+# Weekly Supertrend parameters (same period/multiplier as daily slow by default)
+SUPERTREND_WEEKLY = dict(period=10, multiplier=3)
 
 # ----------------------------------------------------------------------------
-# OUTPUT CATEGORIES
+# OUTPUT CATEGORIES (original composite-score system — unchanged)
 # ----------------------------------------------------------------------------
 ELITE_THRESHOLD = 85
 EMERGING_THRESHOLD_LOW = 75
 EMERGING_THRESHOLD_HIGH = 85
 EXIT_THRESHOLD = 50
 TOP_N = 20
+
+# ════════════════════════════════════════════════════════════════════════════
+# ELITE COMPOUNDER EARLY DETECTION SYSTEM
+# Everything below is ADDITIVE — it runs alongside the original composite
+# score above and does not change or remove anything in it.
+# ════════════════════════════════════════════════════════════════════════════
+
+# --- Lookback windows (in trading days) used across the early-detection modules ---
+WEEKS_13_IN_DAYS = 65
+WEEKS_26_IN_DAYS = 130
+WEEKS_52_IN_DAYS = 252
+
+# --- Early MACD module ---
+MACD_EARLY_LOOKBACK_DAYS = 3   # how many recent bars to scan for a fresh bullish crossover
+
+# --- Volatility Compression module ---
+ATR_PERIOD = 14
+VOLATILITY_COMPRESSION_LOOKBACK_DAYS = 252       # 'last year' for the percentile calc
+VOLATILITY_COMPRESSION_PERCENTILE_THRESHOLD = 25  # TRUE if in the lowest 25% of the year
+
+# --- Early EMA Structure module ---
+EMA10_PERIOD = 10
+EMA20_SLOPE_WINDOW = 10   # bars used to judge whether EMA20 itself is sloping up
+
+# --- Near Breakout module ---
+NEAR_BREAKOUT_THRESHOLD_PCT = 15.0   # distinct from the 10% used in the base Trend bucket
+
+# --- Sector benchmark mapping for RS_SECTOR ---
+# US: GICS Sector -> SPDR sector ETF (reliable, well-established 1:1 mapping)
+SECTOR_INDEX_MAP_US = {
+    "Information Technology":  "XLK",
+    "Health Care":              "XLV",
+    "Financials":                "XLF",
+    "Consumer Discretionary":    "XLY",
+    "Communication Services":    "XLC",
+    "Industrials":                "XLI",
+    "Consumer Staples":           "XLP",
+    "Energy":                      "XLE",
+    "Utilities":                    "XLU",
+    "Real Estate":                  "XLRE",
+    "Materials":                     "XLB",
+}
+
+# NSE: EXACT (normalized) sector label -> yfinance index ticker.
+# These 20 labels are the REAL, COMPLETE set of NSE "Sector" values confirmed
+# from a live NSE500_Full_Scan sheet on 2026-06-19 — not guessed. Only sectors
+# I can reasonably confirm have a working free index ticker are mapped; the
+# rest are left out on purpose and fall back to RS vs. Nifty 50 (visible via
+# `sector_index_source` = FALLBACK_BROAD_INDEX), which is an honest data
+# limitation rather than something to keep guessing tickers for:
+#
+#   Mapped (10):  Automobile and Auto Components, Fast Moving Consumer Goods,
+#                 Financial Services, Healthcare, Information Technology,
+#                 Media Entertainment & Publication, Metals & Mining,
+#                 Oil Gas & Consumable Fuels, Realty, Consumer Services
+#   Intentionally unmapped (10): Capital Goods, Chemicals, Construction,
+#                 Construction Materials, Consumer Durables, Diversified,
+#                 Power, Services, Telecommunication, Textiles
+SECTOR_INDEX_MAP_NSE = {
+    "Automobile and Auto Components":   "^CNXAUTO",      # Nifty Auto
+    "Fast Moving Consumer Goods":       "^CNXFMCG",      # Nifty FMCG
+    "Financial Services":               "^CNXFIN",       # Nifty Financial Services
+    "Healthcare":                       "^CNXPHARMA",    # closest available proxy (pharma-heavy)
+    "Information Technology":           "^CNXIT",        # Nifty IT
+    "Media Entertainment & Publication": "^CNXMEDIA",    # Nifty Media
+    "Metals & Mining":                  "^CNXMETAL",     # Nifty Metal
+    "Oil Gas & Consumable Fuels":       "^CNXENERGY",    # Nifty Energy (closest proxy)
+    "Realty":                           "^CNXREALTY",    # Nifty Realty
+    "Consumer Services":                "^CNXCONSUM",    # Nifty Consumption (loose proxy)
+}
+
+# --- Elite Compounder Score weights (must sum to 100) ---
+ELITE_WEIGHT_OBV_LEADERSHIP         = 20   # OBV 52w high / 13w / 26w rising
+ELITE_WEIGHT_RS_LEADERSHIP          = 20   # RS vs Nifty + Sector: 52w high / 13w / 26w rising
+ELITE_WEIGHT_MACD_EARLY             = 10   # early bullish crossover below zero
+ELITE_WEIGHT_EMA_ALIGNMENT          = 5    # EMA10>EMA20 + EMA20 sloping up
+ELITE_WEIGHT_VOLATILITY_COMPRESSION = 10   # ATR compression in lowest quartile of the year
+ELITE_WEIGHT_SUPERTREND             = 10   # existing daily Supertrend(10,3)+(2,1), rescaled
+ELITE_WEIGHT_WEEKLY_MACD            = 10   # existing weekly MACD score, rescaled
+ELITE_WEIGHT_ABOVE_EMA20            = 5    # price > EMA20
+ELITE_WEIGHT_FUNDAMENTALS           = 10   # existing fundamental qualifying filter
+
+assert (
+    ELITE_WEIGHT_OBV_LEADERSHIP + ELITE_WEIGHT_RS_LEADERSHIP + ELITE_WEIGHT_MACD_EARLY
+    + ELITE_WEIGHT_EMA_ALIGNMENT + ELITE_WEIGHT_VOLATILITY_COMPRESSION
+    + ELITE_WEIGHT_SUPERTREND + ELITE_WEIGHT_WEEKLY_MACD + ELITE_WEIGHT_ABOVE_EMA20
+    + ELITE_WEIGHT_FUNDAMENTALS == 100
+), "Elite Compounder Score weights must sum to 100"
+
+# Within the OBV Leadership sub-score (max 20): 52w-high=10, 13w-rising=5, 26w-rising=5
+ELITE_OBV_POINTS_52W_HIGH = 10
+ELITE_OBV_POINTS_13W_RISING = 5
+ELITE_OBV_POINTS_26W_RISING = 5
+
+# Within the RS Leadership sub-score (max 20): 52w-high=10, 13w-rising=5, 26w-rising=5
+# Each of these is itself split 50/50 between the Nifty-relative and
+# Sector-relative versions of the signal, so full marks require BOTH to agree.
+ELITE_RS_POINTS_52W_HIGH = 10
+ELITE_RS_POINTS_13W_RISING = 5
+ELITE_RS_POINTS_26W_RISING = 5
+
+# Within the daily-Supertrend sub-score (max 10): weight slow vs fast supertrend
+ELITE_SUPERTREND_SUBWEIGHT_SLOW = 0.65
+ELITE_SUPERTREND_SUBWEIGHT_FAST = 0.35
+
+# --- New watchlist category thresholds (based on EliteCompounderScore, 0-100) ---
+ELITE_CATEGORY_A_THRESHOLD = 80    # Category A: Elite Compounders, score > 80
+ELITE_CATEGORY_B_LOW = 65          # Category B: Emerging Leaders, 65-80
+ELITE_CATEGORY_B_HIGH = 80
+ELITE_CATEGORY_C_LOW = 50          # Category C: Watchlist, 50-65
+ELITE_CATEGORY_C_HIGH = 65
 
 # ----------------------------------------------------------------------------
 # GOOGLE SHEETS
@@ -100,6 +367,7 @@ GOOGLE_SERVICE_ACCOUNT_JSON_PATH = os.environ.get(
 )
 
 SHEET_TABS = {
+    # Original tabs — unchanged, still produced exactly as before
     "nse_full": "NSE500_Full_Scan",
     "us_full": "SP500_Full_Scan",
     "top20_nse": "Top20_NSE",
@@ -108,4 +376,13 @@ SHEET_TABS = {
     "emerging": "Emerging_Compounders",
     "exit": "Exit_Candidates",
     "run_log": "Run_Log",
+    # New tabs — Elite Compounder Early Detection System
+    "elite_early_detect": "Elite_Compounders_EarlyDetect",   # strict 3-flag AND filter
+    "category_a": "Category_A_Elite_Compounders",
+    "category_b": "Category_B_Emerging_Leaders",
+    "category_c": "Category_C_Watchlist",
+    "my_portfolio": "My_Portfolio_Scored",
+    "trend_birth": "TREND_BIRTH",
+    "sector_leaders": "SECTOR_LEADERS",
+    "trend_death": "TREND_DEATH",
 }
