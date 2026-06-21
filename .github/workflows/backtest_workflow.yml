@@ -1,0 +1,49 @@
+name: Backtest Signals
+
+# Manual trigger ONLY — this is far more compute-intensive than the daily
+# scan (every indicator gets recomputed at every historical snapshot date),
+# and isn't meant to run on a schedule. Use the Actions tab to run it
+# on-demand whenever you want fresh backtest results.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350   # generous — see config.py BACKTEST_* settings for the main runtime levers
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Write Google service account credentials
+        run: echo "${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON_B64 }}" | base64 --decode > service_account.json
+
+      - name: Run backtest
+        env:
+          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
+          GOOGLE_SERVICE_ACCOUNT_JSON_PATH: service_account.json
+        run: python backtest.py
+
+      - name: Remove credentials file
+        if: always()
+        run: rm -f service_account.json
+
+      - name: Upload results as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backtest-results
+          path: backtest_results.csv
+          retention-days: 90
