@@ -45,7 +45,20 @@ NSE_FALLBACK_TICKERS = [
 # for composite_score / EliteCompounderScore, both tuned against NSE500/
 # SP500 liquidity and data-quality patterns).
 NSE_SMALLCAP250_SOURCE_URL = "https://nsearchives.nseindia.com/content/indices/ind_niftysmallcap250list.csv"
-NSE_MICROCAP250_SOURCE_URL = "https://nsearchives.nseindia.com/content/indices/ind_niftymicrocap250list.csv"
+# Microcap 250 is NOT served from nsearchives.nseindia.com or niftyindices.com's
+# usual /IndexConstituent/ path the way every other Nifty index list is — that
+# was the original (wrong) URL here, confirmed 404 on the first live run
+# (22-06-2026). The working source is niftyindices.com's own backend, reached
+# directly via its raw Azure App Service hostname rather than the custom
+# domain. Confirmed working by manually clicking the Download button on
+# https://www.niftyindices.com/indices/equity/broad-based-indices/nifty-microcap-250
+# and capturing the URL it actually hits. This is structurally less stable
+# than the other source URLs here — a bare *.azurewebsites.net hostname is
+# what you get before/without a custom domain pointed at it, so it can change
+# if NSE Indices ever redeploys or reconfigures hosting. If this one starts
+# 404ing, check that page again for a new Download-button URL rather than
+# assuming the file's path is what changed.
+NSE_MICROCAP250_SOURCE_URL = "https://nseindex-prod-app.azurewebsites.net/IndexConstituent/ind_niftymicrocap250_list.csv"
 
 # Same emergency-only purpose as NSE_FALLBACK_TICKERS above — a handful of
 # liquid-ish small/microcap names so the pipeline doesn't crash if both live
