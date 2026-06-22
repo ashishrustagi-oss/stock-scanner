@@ -101,6 +101,7 @@ def process_universe(label: str, universe_df: pd.DataFrame, index_ticker: str) -
     # divergence — see README for the rationale behind both.
     metrics_df = sc.compute_trend_death(metrics_df)
     metrics_df = sc.compute_obv_divergence_flag(metrics_df)
+    metrics_df = sc.compute_obv_leadership_rank(metrics_df)
 
     # MF/FII shareholding trend — NSE-specific (SEBI quarterly filing concept,
     # no equivalent free data source built for US institutional holdings
@@ -163,7 +164,7 @@ DISPLAY_COLUMNS = [
     "flag_compression", "flag_ema_alignment", "flag_near_breakout",
     # Phase 1 (Elite Compounder Discovery v2.0) — additional headline flags
     "flag_rs_top_decile", "flag_trend_birth", "flag_monthly_bullish", "flag_sector_leader",
-    "flag_trend_death", "flag_bullish_obv_divergence",
+    "flag_trend_death", "flag_bullish_obv_divergence", "flag_obv_leadership_top_decile",
     "flag_institutional_accumulation", "flag_earnings_accelerating",
     # Original sub-scores
     "score_obv", "score_macd_weekly", "score_macd_daily", "score_trend", "score_rs",
@@ -214,7 +215,7 @@ DISPLAY_COLUMNS = [
     "sector_rank", "sector_leader_score",
     # Chart study additions
     "macd_early_bearish", "trend_death_flag", "trend_death_score",
-    "obv_price_divergence",
+    "obv_price_divergence", "obv_leadership_rank",
 ]
 
 
@@ -284,8 +285,12 @@ def main():
             combined[combined["trend_death_flag"] == 1.0]
             .sort_values("trend_death_score", ascending=False)
         )
+        obv_leaders_tab = view(
+            combined.sort_values("obv_leadership_rank", ascending=False)
+            .head(config.OBV_LEADERS_TAB_TOP_N)
+        )
     else:
-        trend_birth_tab = sector_leaders_tab = trend_death_tab = pd.DataFrame()
+        trend_birth_tab = sector_leaders_tab = trend_death_tab = obv_leaders_tab = pd.DataFrame()
 
     run_log = pd.DataFrame([{
         "run_timestamp_utc": run_started.isoformat(),
@@ -335,6 +340,7 @@ def main():
         config.SHEET_TABS["trend_birth"]: trend_birth_tab,
         config.SHEET_TABS["sector_leaders"]: sector_leaders_tab,
         config.SHEET_TABS["trend_death"]: trend_death_tab,
+        config.SHEET_TABS["obv_leaders"]: obv_leaders_tab,
     }
 
     # Only add the portfolio tab if there was something to show — avoids

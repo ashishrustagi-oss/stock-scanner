@@ -150,6 +150,18 @@ OBV_DIVERGENCE_MIN_PULLBACK_PCT = -5.0    # need at least a 5% pullback for dive
 OBV_DIVERGENCE_BULLISH_THRESHOLD = 10.0   # percentage points of divergence needed to flag as bullish
 
 # ════════════════════════════════════════════════════════════════════════════
+# OBV LEADERSHIP RANK — added based on real backtest evidence (not chart
+# reading): OBV proved to be the most consistently predictive signal in this
+# system across both the 100-ticker and 300-ticker backtest runs. Smooths the
+# binary OBV_52W_HIGH flag into a continuous 0-100 percentile rank of OBV
+# momentum (blended 13w + 26w slope), so the system can distinguish "barely
+# qualifies" from "genuinely strong accumulation" rather than treating every
+# stock above the 52-week-high threshold identically.
+# ════════════════════════════════════════════════════════════════════════════
+OBV_LEADERSHIP_RANK_TOP_DECILE_THRESHOLD = 90   # flag fires above this percentile
+OBV_LEADERS_TAB_TOP_N = 30                       # how many stocks the OBV_LEADERS tab shows
+
+# ════════════════════════════════════════════════════════════════════════════
 # BACKTEST FRAMEWORK — see backtest.py module docstring for full design notes
 # Deliberately conservative defaults — this is far more compute-intensive
 # than the daily scan (every indicator recomputed at every snapshot date).
@@ -385,4 +397,5 @@ SHEET_TABS = {
     "trend_birth": "TREND_BIRTH",
     "sector_leaders": "SECTOR_LEADERS",
     "trend_death": "TREND_DEATH",
+    "obv_leaders": "OBV_LEADERS",
 }

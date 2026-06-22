@@ -59,10 +59,10 @@ HEADER_FORMAT = {
     "horizontalAlignment": "CENTER",
 }
 
-# Columns A through Y (1-25) are the headline view, including all visual
-# flags through the chart-study additions (Trend Death, OBV divergence).
-# Column Z onward is detail — grouped into a collapsible outline.
-HEADLINE_COLUMN_COUNT = 25
+# Columns A through Z (1-26) are the headline view, including all visual
+# flags through the OBV Leadership Rank addition. Column AA onward is
+# detail — grouped into a collapsible outline.
+HEADLINE_COLUMN_COUNT = 26
 
 # Small pause between tabs' formatting batch calls — with the batching fix
 # this isn't strictly required to stay under quota, but it's cheap insurance

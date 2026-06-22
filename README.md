@@ -497,6 +497,41 @@ shows real predictive edge on real NSE/US history — that's exactly what
 running this for real will tell you, and it might show some signals here
 don't hold up as well as the chart study suggested. That's the point.
 
+## OBV Leadership Rank — backtest-driven, not chart-driven
+
+Added after running the actual backtest, not from reading charts: across
+both the 100-ticker and 300-ticker runs, OBV proved to be the single most
+consistently predictive signal in this whole system (`obv_52w_high` held
++3.2pp excess vs. random stock-picking at 3 months in the smaller run, then
+**strengthened** to +4.1pp with 3x more data — most signals weakened or
+reversed with more data; this one got stronger).
+
+`obv_leadership_rank` smooths the binary `obv_52w_high` flag into a
+continuous 0-100 percentile rank: blends `obv_slope_13w` and
+`obv_slope_26w`, then ranks that blend within the universe. A rank of 98
+means this stock's OBV momentum is stronger than 98% of the universe right
+now — separating genuine accumulation from a stock that just barely
+technically qualifies for the binary flag. `flag_obv_leadership_top_decile`
+fires above rank 90. New tab: **OBV_LEADERS**, the top 30 stocks by this
+rank across both universes.
+
+Purely additive — doesn't change `composite_score` or
+`EliteCompounderScore`. `obv_52w_high` and everything that already used it
+(the early-detection strict filter, Trend Birth, the original Elite
+Compounder OBV sub-score) are completely unchanged.
+
+### A finding worth remembering from the backtest before building further
+
+Trend Birth's apparent edge (+2.06pp excess at 3m with 38 samples)
+**reversed to -2.64pp** once tested on 137 samples, and got worse at longer
+horizons (-14pp at 12m). `composite_score_above_85` similarly weakened from
++1.90pp to essentially flat. Meanwhile `elite_score_above_65` (the
+most-sampled threshold-based signal, n=170→532 across the two runs) stayed
+remarkably stable at roughly +3.5pp both times — that consistency under a
+3x larger sample is exactly what separates a real signal from one that
+just looked good by chance in a smaller sample. Treat any newly-added
+signal here with the same skepticism until it's been tested the same way.
+
 ## Known limitations — read before relying on this
 
 - **NSE fundamental coverage via Yahoo Finance is patchy.** Many Indian

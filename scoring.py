@@ -578,3 +578,30 @@ def compute_obv_divergence_flag(df: pd.DataFrame) -> pd.DataFrame:
 
     df["flag_bullish_obv_divergence"] = df.apply(_flag, axis=1)
     return df
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# OBV LEADERSHIP RANK — backtest-driven addition (not chart-study)
+# Real evidence from the backtest: OBV was the most consistently predictive
+# signal across both the 100-ticker and 300-ticker runs (obv_52w_high held
+# +3.2pp then +4.1pp excess vs. random stock-picking at 3 months — it didn't
+# weaken with more data, it strengthened). This smooths the binary
+# OBV_52W_HIGH flag into a continuous rank, so "barely qualifies" and
+# "genuinely strong accumulation" aren't treated identically.
+# ════════════════════════════════════════════════════════════════════════════
+
+def compute_obv_leadership_rank(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Blends obv_slope_13w and obv_slope_26w into one momentum figure, then
+    percentile-ranks it (0-100) within the universe. A rank of 98 means
+    this stock's OBV momentum is stronger than 98% of the universe right
+    now — genuine accumulation, not just "technically above its 52w high."
+    Purely additive: does not change composite_score or EliteCompounderScore.
+    """
+    df = df.copy()
+    blended_momentum = (df["obv_slope_13w"] + df["obv_slope_26w"]) / 2
+    df["obv_leadership_rank"] = _pct_rank(blended_momentum)
+    df["flag_obv_leadership_top_decile"] = df["obv_leadership_rank"].apply(
+        lambda r: "🟢" if (not pd.isna(r) and r > config.OBV_LEADERSHIP_RANK_TOP_DECILE_THRESHOLD) else ""
+    )
+    return df
