@@ -39,7 +39,18 @@ logging.basicConfig(
 logger = logging.getLogger("main")
 
 
-def process_universe(label: str, universe_df: pd.DataFrame, index_ticker: str) -> pd.DataFrame:
+def process_universe(label: str, universe_df: pd.DataFrame, index_ticker: str, skip_scoring: bool = False) -> pd.DataFrame:
+    """
+    skip_scoring=True computes per-ticker indicators and fundamentals as
+    normal, but skips composite_score, EliteCompounderScore, and every
+    cross-sectional/percentile-rank module (rs_rank, sector_rank,
+    obv_leadership_rank, institutional_accumulation_score). Those formulas
+    were tuned/backtested against NSE500+SP500 liquidity and data-quality
+    patterns; running them on a thinner, less-liquid universe would silently
+    distort the percentiles for the universe they WERE validated on if ever
+    combined, and would themselves be meaningless without separate
+    backtesting. Used for the NSE_SmallMicro tier — see README.
+    """
     logger.info("=== Processing %s universe (%d tickers) ===", label, len(universe_df))
 
     yf_tickers = universe_df["yf_ticker"].tolist()
@@ -76,6 +87,19 @@ def process_universe(label: str, universe_df: pd.DataFrame, index_ticker: str) -
         lambda r: fnd.passes_fundamental_filter(r.to_dict()), axis=1
     )
 
+    if skip_scoring:
+        # Raw tier: per-ticker indicators + fundamentals only. No
+        # composite_score, no EliteCompounderScore, no cross-sectional
+        # ranks (rs_rank, sector_rank, obv_leadership_rank, institutional
+        # accumulation), no shareholding. Single RS-vs-broad-index column
+        # kept since it's a per-ticker figure, not a rank.
+        metrics_df["RS_vs_Broad_Index_pct"] = metrics_df["rs_score"]
+        metrics_df = sc.compute_earnings_acceleration_score(metrics_df)  # per-ticker, not a rank
+        metrics_df["universe"] = label
+        metrics_df = metrics_df.sort_values("RS_vs_Broad_Index_pct", ascending=False).reset_index(drop=True)
+        logger.info("%s done (unscored, raw tier): %d tickers", label, len(metrics_df))
+        return metrics_df
+
     # Original composite scoring system — unchanged
     metrics_df = sc.compute_composite(metrics_df)
     metrics_df["category"] = metrics_df.apply(
@@ -108,6 +132,9 @@ def process_universe(label: str, universe_df: pd.DataFrame, index_ticker: str) -
     # here; US uses a different framework — SEC 13F — out of scope).
     # Informational only: does NOT feed into composite_score or
     # EliteCompounderScore, so it can't disrupt either already-tuned system.
+    # Strict equality (not a prefix check) is deliberate here: the new
+    # NSE_SmallMicro tier should NOT get shareholding — NSE500 keeps sole
+    # priority on the 60-tickers/run rate-limit budget (see README).
     if label == "NSE500":
         share_trends = shareholding.get_shareholding_trends(metrics_df["ticker"].tolist())
         share_df = pd.DataFrame(
@@ -218,6 +245,40 @@ DISPLAY_COLUMNS = [
     "obv_price_divergence", "obv_leadership_rank",
 ]
 
+# Raw tier — NSE_SmallMicro. Deliberately excludes composite_score,
+# EliteCompounderScore, category, elite_category, every flag/rank that's
+# cross-sectional (rs_rank, sector_rank, obv_leadership_rank, trend_birth,
+# trend_death, institutional_accumulation), and all shareholding columns —
+# none of those are computed for this tier (skip_scoring=True). Keeping a
+# separate list (rather than filtering DISPLAY_COLUMNS down) makes it
+# obvious at a glance which columns this tier is meant to have, instead of
+# relying on "whatever happens to exist in the dataframe."
+RAW_DISPLAY_COLUMNS = [
+    "ticker", "name", "sector", "universe", "close",
+    "RS_vs_Broad_Index_pct", "rs_score",
+    # OBV
+    "obv_slope_20d", "obv_slope_50d", "obv_52w_range_pct",
+    "obv_52w_high", "obv_26w_high", "obv_price_divergence",
+    # MACD (daily/weekly/monthly)
+    "daily_macd", "daily_signal", "daily_hist", "macd_early_bullish", "macd_early_bearish",
+    "weekly_macd", "weekly_signal", "weekly_hist", "weekly_macd_positive",
+    "monthly_macd", "monthly_signal", "monthly_hist", "monthly_bullish",
+    # Supertrend / EMA / trend structure
+    "supertrend_10_3_dir", "supertrend_weekly_dir", "ema10", "ema20", "early_ema_alignment",
+    # 52w-high / breakout proximity
+    "pct_from_52w_high", "near_52w_high", "near_breakout_15pct",
+    # Volatility compression (informational only — backtest showed this is
+    # NOT a reliable standalone signal even on NSE500/SP500; doubly so on a
+    # thinner, less-liquid universe that's never been backtested at all)
+    "atr_compression_percentile", "volatility_compression",
+    # Fundamentals
+    "sales_cagr", "profit_cagr", "roce", "debt_equity", "fundamentally_qualified", "data_quality",
+    # Earnings acceleration (per-ticker, not a cross-sectional rank — safe to
+    # carry over as-is; same QoQ seasonality caveat applies, see README)
+    "eps_acceleration", "revenue_acceleration", "earnings_acceleration_score",
+    "flag_earnings_accelerating", "earnings_data_quality",
+]
+
 
 def main():
     run_started = datetime.datetime.utcnow()
@@ -225,9 +286,17 @@ def main():
 
     nse_universe = universe.get_nse500_universe()
     sp500_universe = universe.get_sp500_universe()
+    smallmicro_universe = universe.get_nse_smallmicro_universe()
 
     nse_df = process_universe("NSE500", nse_universe, config.INDEX_TICKER_NSE)
     us_df = process_universe("S&P500", sp500_universe, config.INDEX_TICKER_US)
+    # Deliberately NOT included in `combined` below — see README "NSE
+    # Small/Micro-cap tier" section. Raw indicators + fundamentals only,
+    # no composite_score / EliteCompounderScore, no shareholding. Kept out
+    # of every percentile-ranked tab (Top20, Elite/Emerging/Exit, Sector
+    # Leaders, OBV Leaders, etc.) so it can't distort rankings that were
+    # tuned/backtested against NSE500+SP500 liquidity and data patterns.
+    smallmicro_df = process_universe("NSE_SmallMicro", smallmicro_universe, config.INDEX_TICKER_NSE, skip_scoring=True)
 
     combined = pd.concat([nse_df, us_df], ignore_index=True) if not nse_df.empty and not us_df.empty else (
         nse_df if not nse_df.empty else us_df
@@ -236,6 +305,11 @@ def main():
     def view(df, cols=DISPLAY_COLUMNS):
         existing = [c for c in cols if c in df.columns]
         return df[existing]
+
+    # Raw, unscored tier — own column set (RAW_DISPLAY_COLUMNS), no
+    # composite_score / EliteCompounderScore / cross-sectional ranks exist
+    # on this dataframe at all (skip_scoring=True upstream).
+    smallmicro_tab = view(smallmicro_df, cols=RAW_DISPLAY_COLUMNS) if not smallmicro_df.empty else pd.DataFrame()
 
     # ── Original tabs — unchanged logic ──
     top20_nse = view(nse_df.head(config.TOP_N)) if not nse_df.empty else pd.DataFrame()
@@ -324,6 +398,8 @@ def main():
         "sector_leaders_count": len(sector_leaders_tab),
         "trend_death_count": len(trend_death_tab),
         "earnings_accelerating_count": len(earnings_accelerating_tab),
+        # NSE Small/Micro-cap tier (raw, unscored — see README)
+        "nse_smallmicro_tickers_scanned": len(smallmicro_df),
     }])
 
     # ── My Portfolio (manually-imported Zerodha holdings) — additive, never
@@ -356,6 +432,8 @@ def main():
         config.SHEET_TABS["trend_death"]: trend_death_tab,
         config.SHEET_TABS["obv_leaders"]: obv_leaders_tab,
         config.SHEET_TABS["earnings_accelerating"]: earnings_accelerating_tab,
+        # NSE Small/Micro-cap tier (raw, unscored)
+        config.SHEET_TABS["nse_smallmicro_full"]: smallmicro_tab,
     }
 
     # Only add the portfolio tab if there was something to show — avoids

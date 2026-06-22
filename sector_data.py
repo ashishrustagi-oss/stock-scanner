@@ -83,7 +83,13 @@ def get_sector_close_map(universe_label: str, sector_labels: list[str], fallback
     ticker symbol (e.g. "XLK") or "FALLBACK_BROAD_INDEX" if no mapping
     existed or the fetch failed.
     """
-    mapping = config.SECTOR_INDEX_MAP_NSE if universe_label == "NSE500" else config.SECTOR_INDEX_MAP_US
+    # Any NSE-side universe (NSE500, or the separate NSE_SmallMicro tier)
+    # uses the NSE sector mapping; everything else (S&P500) uses US. A
+    # strict `== "NSE500"` check here would silently misroute any new
+    # NSE-side universe label into the US/GICS mapping, which would never
+    # match NSE sector names and quietly fall back to broad-index for
+    # every sector — wrong, and wrong silently. Prefix check instead.
+    mapping = config.SECTOR_INDEX_MAP_NSE if universe_label.startswith("NSE") else config.SECTOR_INDEX_MAP_US
     unique_sectors = sorted({s for s in sector_labels if s and not pd.isna(s)})
 
     sector_to_ticker = {s: _match_ticker(s, mapping) for s in unique_sectors}

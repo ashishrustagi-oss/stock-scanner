@@ -137,6 +137,16 @@ def fake_sp500_universe():
     })
 
 
+def fake_smallmicro_universe():
+    tickers = [f"SMALLCAP{i}" for i in range(20)]
+    return pd.DataFrame({
+        "ticker": tickers,
+        "yf_ticker": [t + ".NS" for t in tickers],
+        "name": [f"Small/Micro Fake Co {i}" for i in range(20)],
+        "sector": [SECTORS[i % len(SECTORS)] for i in range(20)],
+    })
+
+
 # Monkeypatch
 data_fetch.fetch_price_history = fake_fetch_price_history
 data_fetch.fetch_index_history = fake_fetch_index_history
@@ -146,6 +156,7 @@ shareholding.get_shareholding_trends = fake_get_shareholding_trends
 sheets_export.export_to_sheets = fake_export_to_sheets
 universe.get_nse500_universe = fake_nse_universe
 universe.get_sp500_universe = fake_sp500_universe
+universe.get_nse_smallmicro_universe = fake_smallmicro_universe
 
 import main  # noqa: E402  (import after monkeypatch so main uses patched modules)
 
@@ -175,6 +186,18 @@ for key in ["category_a", "category_b", "category_c"]:
 
 print("\n=== Run log ===")
 print(captured_tabs[config.SHEET_TABS["run_log"]].to_string())
+
+print("\n=== NSE_SmallMicro_Full_Scan (raw, unscored tier) ===")
+smc = captured_tabs[config.SHEET_TABS["nse_smallmicro_full"]]
+print(f"Shape: {smc.shape}")
+print(f"Columns: {list(smc.columns)}")
+forbidden_cols = {"composite_score", "EliteCompounderScore", "category", "elite_category",
+                   "rs_rank", "sector_rank", "obv_leadership_rank", "institutional_accumulation_score",
+                   "mf_holding_pct", "fii_holding_pct"}
+leaked = forbidden_cols & set(smc.columns)
+assert not leaked, f"Scoring/shareholding columns leaked into the unscored tier: {leaked}"
+print("Confirmed: no scoring or shareholding columns present in NSE_SmallMicro_Full_Scan.")
+print(smc[["ticker", "sector", "RS_vs_Broad_Index_pct", "data_quality"]].head(10).to_string())
 
 print("\nDRY RUN PASSED - no exceptions")
 

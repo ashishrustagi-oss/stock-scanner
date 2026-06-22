@@ -26,6 +26,35 @@ NSE_FALLBACK_TICKERS = [
     "ULTRACEMCO", "NESTLEIND", "WIPRO",
 ]
 
+# ----------------------------------------------------------------------------
+# NSE Small/Micro-cap universe — separate, NOT merged into NSE500
+# ----------------------------------------------------------------------------
+# Smallcap 250 is, by NSE's own index rule, drawn entirely from existing
+# Nifty 500 members (must be in Nifty 500, must NOT be in Nifty 100 or
+# Midcap 150) — so on its own it adds ~zero genuinely new tickers, just a
+# label for stocks already in NSE500_Full_Scan.
+#
+# Microcap 250 is different: by NSE's rule, stocks already in/entering
+# Nifty 500 are INELIGIBLE for Microcap 250 — it's compulsorily built from
+# the rank ~351-675 band BEYOND Nifty 500. This is the piece that actually
+# adds new names. Both are fetched and combined here so a name doesn't
+# silently get skipped if it crosses tiers between semi-annual NSE rebalances.
+#
+# Deliberately kept OUT of `combined` in main.py — see README "NSE
+# Small/Micro-cap tier" section for why (percentile-rank contamination risk
+# for composite_score / EliteCompounderScore, both tuned against NSE500/
+# SP500 liquidity and data-quality patterns).
+NSE_SMALLCAP250_SOURCE_URL = "https://nsearchives.nseindia.com/content/indices/ind_niftysmallcap250list.csv"
+NSE_MICROCAP250_SOURCE_URL = "https://nsearchives.nseindia.com/content/indices/ind_niftymicrocap250list.csv"
+
+# Same emergency-only purpose as NSE_FALLBACK_TICKERS above — a handful of
+# liquid-ish small/microcap names so the pipeline doesn't crash if both live
+# fetch attempts fail. NOT a substitute for the real lists.
+NSE_SMALLMICRO_FALLBACK_TICKERS = [
+    "CAMS", "MTARTECH", "POLYCAB", "PERSISTENT", "KPITTECH",
+    "RAINBOW", "CLEAN", "ANGELONE", "AARTIIND", "BEML",
+]
+
 INDEX_TICKER_NSE = "^NSEI"   # Nifty 50, used as RS benchmark for NSE names
 INDEX_TICKER_US = "^GSPC"    # S&P 500 index (use "SPY" if you prefer the ETF)
 
@@ -410,4 +439,9 @@ SHEET_TABS = {
     "trend_death": "TREND_DEATH",
     "obv_leaders": "OBV_LEADERS",
     "earnings_accelerating": "EARNINGS_ACCELERATING",
+    # NSE Small/Micro-cap tier — deliberately separate from nse_full. Raw
+    # indicators + fundamentals only, NO composite_score / EliteCompounderScore
+    # (those formulas are tuned/backtested against NSE500+SP500 liquidity and
+    # data-quality patterns — see README "NSE Small/Micro-cap tier" section).
+    "nse_smallmicro_full": "NSE_SmallMicro_Full_Scan",
 }

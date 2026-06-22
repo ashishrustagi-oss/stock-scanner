@@ -82,3 +82,79 @@ def get_nse500_universe() -> pd.DataFrame:
         }
     )
     return fallback
+
+
+def _fetch_nse_index_csv(session: requests.Session, url: str, min_rows: int) -> pd.DataFrame:
+    """Shared fetch+parse logic for any ind_*list.csv NSE index file."""
+    for attempt in range(1, config.MAX_RETRIES + 1):
+        try:
+            session.get(config.NSE_HOME_URL, timeout=10)  # primes cookies
+            resp = session.get(url, timeout=15)
+            resp.raise_for_status()
+            df = pd.read_csv(io.StringIO(resp.text))
+            df = df.rename(
+                columns={"Symbol": "ticker", "Company Name": "name", "Industry": "sector"}
+            )
+            df["yf_ticker"] = df["ticker"].astype(str).str.strip() + ".NS"
+            cols = [c for c in ["ticker", "yf_ticker", "name", "sector"] if c in df.columns]
+            out = df[cols].drop_duplicates(subset="ticker")
+            if len(out) < min_rows:
+                raise ValueError(f"Unexpectedly small list ({len(out)} rows) from {url} — likely a bad response")
+            return out
+        except Exception as exc:  # noqa: BLE001 - retry on anything, fall back at the caller
+            logger.warning("Fetch attempt %d/%d failed for %s: %s", attempt, config.MAX_RETRIES, url, exc)
+            time.sleep(config.RETRY_BACKOFF_SECONDS)
+    raise RuntimeError(f"All fetch attempts failed for {url}")
+
+
+def get_nse_smallmicro_universe() -> pd.DataFrame:
+    """
+    Returns DataFrame with columns: ticker, yf_ticker, name, sector — Nifty
+    Smallcap 250 + Nifty Microcap 250 combined and de-duplicated.
+
+    Deliberately NOT merged with NSE500 anywhere in the pipeline. Smallcap
+    250 names mostly already exist in NSE500 (by NSE's own index rule);
+    Microcap 250 names are compulsorily EXCLUDED from Nifty 500, so this is
+    where the genuinely new tickers come from. See config.py for the source
+    URLs and rationale, and README for why this stays a separate sheet tab
+    with no composite_score / EliteCompounderScore.
+    """
+    session = requests.Session()
+    session.headers.update(NSE_HEADERS)
+
+    try:
+        smallcap = _fetch_nse_index_csv(session, config.NSE_SMALLCAP250_SOURCE_URL, min_rows=100)
+        logger.info("Fetched live Smallcap 250 list: %d tickers", len(smallcap))
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Smallcap 250 fetch failed entirely: %s", exc)
+        smallcap = pd.DataFrame(columns=["ticker", "yf_ticker", "name", "sector"])
+
+    try:
+        microcap = _fetch_nse_index_csv(session, config.NSE_MICROCAP250_SOURCE_URL, min_rows=100)
+        logger.info("Fetched live Microcap 250 list: %d tickers", len(microcap))
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Microcap 250 fetch failed entirely: %s", exc)
+        microcap = pd.DataFrame(columns=["ticker", "yf_ticker", "name", "sector"])
+
+    combined = pd.concat([smallcap, microcap], ignore_index=True).drop_duplicates(subset="ticker")
+
+    if len(combined) < 100:
+        logger.error(
+            "Both Smallcap 250 and Microcap 250 fetches failed or returned too few rows. "
+            "Falling back to a %d-ticker seed list. This is NOT the real universe — fix the live fetch.",
+            len(config.NSE_SMALLMICRO_FALLBACK_TICKERS),
+        )
+        return pd.DataFrame(
+            {
+                "ticker": config.NSE_SMALLMICRO_FALLBACK_TICKERS,
+                "yf_ticker": [t + ".NS" for t in config.NSE_SMALLMICRO_FALLBACK_TICKERS],
+                "name": config.NSE_SMALLMICRO_FALLBACK_TICKERS,
+                "sector": ["UNKNOWN"] * len(config.NSE_SMALLMICRO_FALLBACK_TICKERS),
+            }
+        )
+
+    logger.info(
+        "NSE Small/Micro universe ready: %d unique tickers (%d smallcap, %d microcap, overlap-deduped)",
+        len(combined), len(smallcap), len(microcap),
+    )
+    return combined

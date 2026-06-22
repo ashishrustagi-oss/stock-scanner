@@ -415,6 +415,81 @@ descending. Mixes NSE and US rows deliberately (this is "who's
 accelerating fastest, full stop," not a per-universe comparison like
 Sector Leaders).
 
+## NSE Small/Micro-cap tier — raw, deliberately unscored
+
+A third, fully separate universe alongside NSE500 and S&P500: **Nifty
+Smallcap 250 + Nifty Microcap 250 combined**, in a new
+`NSE_SmallMicro_Full_Scan` tab.
+
+**Why a third universe and not just a bigger NSE500.** By NSE's own index
+rules, Smallcap 250 must already be a Nifty 500 member — including it on
+its own would add ~zero genuinely new tickers, just a label on stocks
+already in `NSE500_Full_Scan`. Microcap 250 is the opposite: stocks already
+in (or entering) Nifty 500 are **compulsorily ineligible** for it — it's
+built from the rank ~351–675 band sitting just beyond the Nifty 500 floor.
+Combining both is the smallest fetch that gets genuinely new names without
+going all the way to NSE's full ~2,000-name equity list (`EQUITY_L.csv`),
+which was considered and deliberately rejected: that would roughly double
+total universe size, push the MF/FII shareholding module's full-coverage
+cycle from ~9 runs to ~25, and add a tier of names yfinance covers
+noticeably worse than even the existing "patchy" NSE500 fundamentals
+coverage. Smallcap+Microcap 250 keeps the new tier inside ~250 net-new,
+bounded names.
+
+**Why it's NOT merged into `combined` / NSE500.** `composite_score` and
+`EliteCompounderScore` are percentile-ranked and were tuned/backtested
+specifically against NSE500+SP500 liquidity and data-quality patterns (see
+"Backtest Framework" below). Mixing in a thinner, less liquid, more
+data-sparse tier would distort those percentiles for the universe they
+*were* validated on — exactly the kind of silent contamination this
+project has otherwise been careful to avoid. So this tier gets its own
+tab, its own (much shorter) column list, and runs through
+`process_universe(..., skip_scoring=True)` — a new parameter that computes
+per-ticker indicators and fundamentals exactly as normal, but skips
+`composite_score`, `EliteCompounderScore`, and every cross-sectional/
+percentile-rank module: `rs_rank`, `sector_rank`, `trend_birth`/
+`trend_death`, `obv_leadership_rank`, `institutional_accumulation_score`.
+`flag_earnings_accelerating` / `earnings_acceleration_score` ARE still
+computed — that module is per-ticker (QoQ vs. the same ticker's own prior
+quarter), not a cross-sectional rank, so it isn't subject to the same
+contamination risk.
+
+**No shareholding for this tier.** The MF/FII module is already capped at
+60 tickers/run by NSE's rate limit, and full NSE500 coverage alone takes
+~9 runs. Adding ~250 more names would stretch that to ~1 month for full
+coverage. NSE500 keeps sole priority — the shareholding gate in
+`main.py` checks `label == "NSE500"` (strict equality, deliberately, not a
+prefix check) so the new tier is correctly excluded.
+
+**One real bug caught and fixed while wiring this in:** `sector_data.py`'s
+sector-benchmark mapping used to check `universe_label == "NSE500"` to
+decide whether to use the NSE or US/GICS sector-ticker mapping. With the
+new `"NSE_SmallMicro"` label, that strict check would have silently
+misrouted every small/microcap stock into the US mapping — which would
+never match NSE sector names like "Information Technology" or "Financial
+Services," and would have quietly fallen back to broad-index RS for every
+single sector without raising an error. Changed to
+`universe_label.startswith("NSE")` so any current or future NSE-side
+universe label routes correctly.
+
+**What's in the tab:** ticker/name/sector, the full OBV/MACD/Supertrend/EMA/
+RS indicator set (per-ticker, not ranked), 52-week-high and near-breakout
+proximity, volatility compression (informational — remember the backtest
+found this is NOT a reliable standalone signal even on NSE500/SP500, so
+treat it with at least that much skepticism here, on an unbacktested
+universe), fundamentals + `fundamentally_qualified`, and earnings
+acceleration. No category, no elite_category, no flags that depend on a
+cross-sectional rank.
+
+**Treat everything in this tab as informational only, not yet a trading
+signal.** None of it has been backtested — not the indicators' predictive
+value on this liquidity tier, not the fundamentals coverage rate, nothing.
+Before trusting anything here the way the NSE500/SP500 scores are
+trusted, it needs its own walk-forward backtest run separately (same
+methodology as `backtest.py`, see below) — smallcap/microcap stocks behave
+differently across market cycles than the large/mid-cap names the existing
+backtest evidence actually covers.
+
 ## Chart Study Additions — Trend Death + OBV-Price Divergence
 
 Built from studying real charts of BEL, Bharat Forge, CAMS, MTAR Tech, CDSL,
@@ -579,7 +654,7 @@ signal here with the same skepticism until it's been tested the same way.
 ## Repo structure
 ```
 config.py              All tunable parameters
-universe.py             NSE500 / S&P500 constituent loading
+universe.py             NSE500 / S&P500 / NSE Small+Microcap 250 constituent loading
 data_fetch.py            Batched yfinance price history fetch
 indicators.py             OBV, MACD, Supertrend, EMA, RS, 52w-high distance
 fundamentals.py          CAGR / ROCE / D-E from Yahoo financial statements (cached weekly)
@@ -587,5 +662,6 @@ scoring.py               Cross-sectional percentile scoring + composite + catego
 sheets_export.py          Google Sheets writer
 main.py                   Orchestrator — run this
 test_dry_run.py            Mocked end-to-end test, no network needed (dev use only)
+diagnostics/               One-off checks (e.g. earnings-acceleration data-quality coverage), not part of the daily pipeline
 .github/workflows/daily_scan.yml   Automation
 ```
