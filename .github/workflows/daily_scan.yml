@@ -41,11 +41,11 @@ jobs:
         if: always()
         run: rm -f service_account.json
 
-      - name: Persist fundamentals cache
+      - name: Persist caches (fundamentals + shareholding)
         if: always()
         run: |
           git config user.name "scanner-bot"
           git config user.email "actions@github.com"
-          git add cache/fundamentals_cache.json 2>/dev/null || true
-          git diff --quiet --cached || git commit -m "Update fundamentals cache [skip ci]"
+          git add cache/fundamentals_cache.json cache/shareholding_history.json 2>/dev/null || true
+          git diff --quiet --cached || git commit -m "Update fundamentals + shareholding cache [skip ci]"
           git push || true
