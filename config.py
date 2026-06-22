@@ -157,11 +157,7 @@ OBV_DIVERGENCE_BULLISH_THRESHOLD = 10.0   # percentage points of divergence need
 # time. Run manually via backtest_workflow.yml, never as part of daily scan.
 # ════════════════════════════════════════════════════════════════════════════
 BACKTEST_UNIVERSE = "NSE500"          # "NSE500" or "SP500" — one at a time
-<<<<<<< HEAD
 BACKTEST_MAX_TICKERS = 300            # None = full universe (slow); widened from 100 after a clean 7m43s test run
-=======
-BACKTEST_MAX_TICKERS = 100            # None = full universe (slow); start small
->>>>>>> 03c5cc34f7ef9d7e7eadf5834ebb208ad360f07a
 BACKTEST_LOOKBACK_YEARS = 3           # how far back snapshot dates go
 BACKTEST_SNAPSHOT_FREQ = "MS"         # "MS" = monthly (1st of month); "W" = weekly (much slower)
 BACKTEST_MIN_HISTORY_DAYS = 300       # minimum days of price history needed before a date is usable
