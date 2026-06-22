@@ -391,14 +391,29 @@ stack** here (unlike Module 2's MF/FII tiers, which don't) — max 10 + max
 
 `flag_earnings_accelerating` fires when the combined score exceeds 10.
 
-### Realistic expectation
+### Live coverage check (22-06-2026)
 
-Tested against synthetic data shaped exactly like yfinance's real quarterly
-statement format (verified the math by hand). What I can't verify from here
-is whether yfinance's actual field names ("Diluted EPS" vs "Basic EPS") and
-quarter depth hold up the same way across hundreds of real NSE/US tickers —
-check `earnings_data_quality` after the first live run; if it's mostly
-`missing`, send me the pattern and we'll adjust the field-name fallbacks.
+Ran `diagnostics/earnings_accel_coverage_check.py` against a 19-ticker mixed
+sample (NSE large-cap, NSE mid-cap, US large-cap, and deliberately seasonal
+US retail names) before deploying this to production: **79% "ok", 21%
+"partial", 0% "missing"** — comfortably good enough to build a dedicated
+tab around, no field-name fallback issues found. NSE mid-caps (CAMS, MTAR,
+Bharat Forge, Persistent, Polycab) actually came back slightly *better*
+covered than the large-cap sample.
+
+The seasonality caveat above isn't theoretical — it showed up immediately:
+the seasonal retail sample (TGT, BBY, DECK, TPR) all produced large
+*negative* acceleration scores, consistent with a strong holiday quarter
+rolling off into a normal one, not a deteriorating business. Don't read a
+red flag on `EARNINGS_ACCELERATING` for a seasonal name without checking
+which quarter is being compared.
+
+**New tab: `EARNINGS_ACCELERATING`** — top
+`config.EARNINGS_ACCELERATING_TAB_TOP_N` (default 30) stocks where
+`flag_earnings_accelerating` fired, ranked by `earnings_acceleration_score`
+descending. Mixes NSE and US rows deliberately (this is "who's
+accelerating fastest, full stop," not a per-universe comparison like
+Sector Leaders).
 
 ## Chart Study Additions — Trend Death + OBV-Price Divergence
 

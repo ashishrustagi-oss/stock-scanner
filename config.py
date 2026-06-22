@@ -161,6 +161,17 @@ OBV_DIVERGENCE_BULLISH_THRESHOLD = 10.0   # percentage points of divergence need
 OBV_LEADERSHIP_RANK_TOP_DECILE_THRESHOLD = 90   # flag fires above this percentile
 OBV_LEADERS_TAB_TOP_N = 30                       # how many stocks the OBV_LEADERS tab shows
 
+# ----------------------------------------------------------------------------
+# PHASE 3 (Module 1): Earnings Acceleration tab
+# ----------------------------------------------------------------------------
+# Diagnostic run (diagnostics/earnings_accel_coverage_check.py, 19-ticker
+# mixed NSE/US sample, 22-06-2026): 79% "ok", 21% "partial", 0% "missing" —
+# coverage is good enough for a dedicated tab. Reminder: QoQ seasonality
+# caveat is real, not theoretical — seasonal US retail names (TGT/BBY/DECK/TPR)
+# showed large negative acceleration purely from the holiday quarter rolling
+# off, not necessarily deteriorating fundamentals. See fundamentals.py.
+EARNINGS_ACCELERATING_TAB_TOP_N = 30             # how many stocks the EARNINGS_ACCELERATING tab shows
+
 # ════════════════════════════════════════════════════════════════════════════
 # BACKTEST FRAMEWORK — see backtest.py module docstring for full design notes
 # Deliberately conservative defaults — this is far more compute-intensive
@@ -398,4 +409,5 @@ SHEET_TABS = {
     "sector_leaders": "SECTOR_LEADERS",
     "trend_death": "TREND_DEATH",
     "obv_leaders": "OBV_LEADERS",
+    "earnings_accelerating": "EARNINGS_ACCELERATING",
 }

@@ -289,8 +289,21 @@ def main():
             combined.sort_values("obv_leadership_rank", ascending=False)
             .head(config.OBV_LEADERS_TAB_TOP_N)
         )
+        # Phase 3 (Module 1): Earnings Acceleration tab — filters to the flagged
+        # subset (score > threshold), then ranks by score. Mixes NSE and US
+        # rows deliberately: unlike Sector Leaders this isn't a per-universe
+        # comparison, just "who's accelerating fastest, full stop." The
+        # QoQ seasonality caveat (see config.py / fundamentals.py) means a
+        # name here in a holiday-heavy quarter deserves a second look before
+        # acting on it, not an automatic buy signal.
+        earnings_accelerating_tab = view(
+            combined[combined["flag_earnings_accelerating"] == "🟢"]
+            .sort_values("earnings_acceleration_score", ascending=False)
+            .head(config.EARNINGS_ACCELERATING_TAB_TOP_N)
+        )
     else:
         trend_birth_tab = sector_leaders_tab = trend_death_tab = obv_leaders_tab = pd.DataFrame()
+        earnings_accelerating_tab = pd.DataFrame()
 
     run_log = pd.DataFrame([{
         "run_timestamp_utc": run_started.isoformat(),
@@ -310,6 +323,7 @@ def main():
         "trend_birth_count": len(trend_birth_tab),
         "sector_leaders_count": len(sector_leaders_tab),
         "trend_death_count": len(trend_death_tab),
+        "earnings_accelerating_count": len(earnings_accelerating_tab),
     }])
 
     # ── My Portfolio (manually-imported Zerodha holdings) — additive, never
@@ -341,6 +355,7 @@ def main():
         config.SHEET_TABS["sector_leaders"]: sector_leaders_tab,
         config.SHEET_TABS["trend_death"]: trend_death_tab,
         config.SHEET_TABS["obv_leaders"]: obv_leaders_tab,
+        config.SHEET_TABS["earnings_accelerating"]: earnings_accelerating_tab,
     }
 
     # Only add the portfolio tab if there was something to show — avoids
