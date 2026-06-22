@@ -23,8 +23,14 @@ import config
 import data_fetch
 import fundamentals as fnd
 import indicators as ind
+import metrics_builder
+import portfolio
 import scoring as sc
 import sector_data
+<<<<<<< HEAD
+=======
+import shareholding
+>>>>>>> 03c5cc34f7ef9d7e7eadf5834ebb208ad360f07a
 import sheets_export
 import universe
 
@@ -36,6 +42,7 @@ logging.basicConfig(
 logger = logging.getLogger("main")
 
 
+<<<<<<< HEAD
 def _bool_flag(value, threshold, le=True):
     """NaN-safe boolean-as-float (1.0/0.0/nan) threshold check."""
     if value is None or (isinstance(value, float) and np.isnan(value)):
@@ -133,6 +140,8 @@ def build_metrics_row(
     return row
 
 
+=======
+>>>>>>> 03c5cc34f7ef9d7e7eadf5834ebb208ad360f07a
 def process_universe(label: str, universe_df: pd.DataFrame, index_ticker: str) -> pd.DataFrame:
     logger.info("=== Processing %s universe (%d tickers) ===", label, len(universe_df))
 
@@ -152,7 +161,11 @@ def process_universe(label: str, universe_df: pd.DataFrame, index_ticker: str) -
         try:
             sector_label = ticker_sector_map.get(yf_ticker)
             sector_close, sector_source = sector_close_map.get(sector_label, (index_close, "NO_SECTOR_LABEL"))
+<<<<<<< HEAD
             rows.append(build_metrics_row(yf_ticker, df, index_close, sector_close, sector_source))
+=======
+            rows.append(metrics_builder.build_metrics_row(yf_ticker, df, index_close, sector_close, sector_source))
+>>>>>>> 03c5cc34f7ef9d7e7eadf5834ebb208ad360f07a
         except Exception as exc:  # noqa: BLE001
             logger.warning("Indicator computation failed for %s: %s", yf_ticker, exc)
 
@@ -179,6 +192,66 @@ def process_universe(label: str, universe_df: pd.DataFrame, index_ticker: str) -
     # Elite Compounder Early Detection scoring — additive, runs after the above
     metrics_df = sc.compute_elite_compounder_score(metrics_df)
 
+<<<<<<< HEAD
+=======
+    # Single, clearly-labeled RS column: each stock vs ITS OWN home broad
+    # index only (Nifty 50 for NSE, S&P 500 for US) — distinct from the
+    # sector-specific RS fields above. This is the same underlying
+    # outperformance figure as `rs_score` (blended over ~1m/3m/6m), just
+    # surfaced under an unambiguous name for quick reading in the sheet.
+    metrics_df["RS_vs_Broad_Index_pct"] = metrics_df["rs_score"]
+
+    # Phase 1 of the Elite Compounder Discovery System v2.0 upgrade — RS rank,
+    # Trend Birth detection, Monthly trend confirmation, Sector leadership.
+    # Entirely additive: built only from columns already computed above.
+    metrics_df = sc.compute_phase1_additions(metrics_df)
+
+    # Chart study additions: Trend Death (Distribution Detection) + OBV-price
+    # divergence — see README for the rationale behind both.
+    metrics_df = sc.compute_trend_death(metrics_df)
+    metrics_df = sc.compute_obv_divergence_flag(metrics_df)
+
+    # MF/FII shareholding trend — NSE-specific (SEBI quarterly filing concept,
+    # no equivalent free data source built for US institutional holdings
+    # here; US uses a different framework — SEC 13F — out of scope).
+    # Informational only: does NOT feed into composite_score or
+    # EliteCompounderScore, so it can't disrupt either already-tuned system.
+    if label == "NSE500":
+        share_trends = shareholding.get_shareholding_trends(metrics_df["ticker"].tolist())
+        share_df = pd.DataFrame(
+            [{"ticker": t, **v} for t, v in share_trends.items()]
+        ).rename(columns={
+            "mf_pct": "mf_holding_pct", "fii_pct": "fii_holding_pct",
+            "mf_pct_prev": "mf_holding_pct_prev_qtr", "fii_pct_prev": "fii_holding_pct_prev_qtr",
+            "quarter_end": "shareholding_quarter_end", "data_quality": "shareholding_data_quality",
+        })
+        metrics_df = metrics_df.merge(share_df, on="ticker", how="left")
+        metrics_df["flag_mf_increasing"] = metrics_df["mf_holding_increasing"].apply(
+            lambda v: "🟢" if v is True else ""
+        )
+        metrics_df["flag_fii_increasing"] = metrics_df["fii_holding_increasing"].apply(
+            lambda v: "🟢" if v is True else ""
+        )
+    else:
+        for col in [
+            "mf_holding_pct", "fii_holding_pct", "mf_holding_pct_prev_qtr", "fii_holding_pct_prev_qtr",
+            "mf_holding_increasing", "fii_holding_increasing", "shareholding_quarter_end",
+            "shareholding_data_quality", "flag_mf_increasing", "flag_fii_increasing",
+            "mf_holding_change_qoq", "fii_holding_change_qoq",
+            "mf_increasing_2q_streak", "fii_increasing_2q_streak",
+        ]:
+            metrics_df[col] = None
+
+    # Phase 2 (Module 2 extension): institutional accumulation scoring.
+    # Handles the US branch gracefully too (all-None columns above just
+    # produce a NaN score / blank flag, not an error).
+    metrics_df = sc.compute_institutional_accumulation_score(metrics_df)
+
+    # Phase 3 (Module 1): earnings acceleration — applies to BOTH NSE and US
+    # (yfinance quarterly statements are available for both, unlike MF/FII).
+    metrics_df = sc.compute_earnings_acceleration_score(metrics_df)
+
+>>>>>>> 03c5cc34f7ef9d7e7eadf5834ebb208ad360f07a
     metrics_df["universe"] = label
     metrics_df = metrics_df.sort_values("composite_score", ascending=False).reset_index(drop=True)
 
@@ -195,8 +268,18 @@ DISPLAY_COLUMNS = [
     "composite_score", "category", "fundamentally_qualified",
     # ── Elite Compounder Early Detection — headline fields ──
     "EliteCompounderScore", "elite_category",
+<<<<<<< HEAD
     "flag_obv_leader", "flag_rs_leader", "flag_early_macd",
     "flag_compression", "flag_ema_alignment", "flag_near_breakout",
+=======
+    "RS_vs_Broad_Index_pct",   # single clear RS-vs-home-index column
+    "flag_obv_leader", "flag_rs_leader", "flag_early_macd",
+    "flag_compression", "flag_ema_alignment", "flag_near_breakout",
+    # Phase 1 (Elite Compounder Discovery v2.0) — additional headline flags
+    "flag_rs_top_decile", "flag_trend_birth", "flag_monthly_bullish", "flag_sector_leader",
+    "flag_trend_death", "flag_bullish_obv_divergence",
+    "flag_institutional_accumulation", "flag_earnings_accelerating",
+>>>>>>> 03c5cc34f7ef9d7e7eadf5834ebb208ad360f07a
     # Original sub-scores
     "score_obv", "score_macd_weekly", "score_macd_daily", "score_trend", "score_rs",
     # Elite Compounder sub-scores
@@ -227,6 +310,26 @@ DISPLAY_COLUMNS = [
     "range_compression_ratio", "volatility_compression",
     # Fundamentals
     "sales_cagr", "profit_cagr", "roce", "debt_equity", "data_quality",
+    # Earnings Acceleration (Phase 3, Module 1) — QoQ-based, see README for the YoY-vs-QoQ trade-off
+    "eps_growth_latest_qtr", "eps_growth_prev_qtr", "eps_acceleration",
+    "revenue_growth_latest_qtr", "revenue_growth_prev_qtr", "revenue_acceleration",
+    "earnings_acceleration_score", "earnings_data_quality",
+    # MF/FII shareholding trend (NSE-only, informational — see shareholding.py)
+    "mf_holding_pct", "mf_holding_pct_prev_qtr", "mf_holding_increasing", "flag_mf_increasing",
+    "mf_holding_change_qoq", "mf_increasing_2q_streak",
+    "fii_holding_pct", "fii_holding_pct_prev_qtr", "fii_holding_increasing", "flag_fii_increasing",
+    "fii_holding_change_qoq", "fii_increasing_2q_streak",
+    "shareholding_quarter_end", "shareholding_data_quality",
+    "institutional_accumulation_score",
+    # Phase 1 (Elite Compounder Discovery v2.0) — detail columns behind the headline flags above
+    "rs_rank", "rs_rank_score",
+    "trend_birth_flag", "trend_birth_score",
+    "monthly_macd", "monthly_signal", "monthly_hist", "monthly_ema20", "monthly_ema50",
+    "monthly_bullish", "monthly_trend_score",
+    "sector_rank", "sector_leader_score",
+    # Chart study additions
+    "macd_early_bearish", "trend_death_flag", "trend_death_score",
+    "obv_price_divergence",
 ]
 
 
@@ -280,6 +383,28 @@ def main():
     else:
         elite_early_detect = category_a = category_b = category_c = pd.DataFrame()
 
+<<<<<<< HEAD
+=======
+    # ── Phase 1 (Elite Compounder Discovery v2.0) dashboards ──
+    if not combined.empty:
+        trend_birth_tab = view(
+            combined[combined["trend_birth_flag"] == 1.0]
+            .sort_values("trend_birth_score", ascending=False)
+        )
+        # Top N per (universe, sector) — never mixes NSE and US stocks within
+        # a sector group, since sector_rank itself was computed per-universe.
+        sector_leaders_tab = view(
+            combined[combined["sector_rank"] <= config.SECTOR_LEADER_TOP_N_FOR_TAB]
+            .sort_values(["universe", "sector", "sector_rank"])
+        )
+        trend_death_tab = view(
+            combined[combined["trend_death_flag"] == 1.0]
+            .sort_values("trend_death_score", ascending=False)
+        )
+    else:
+        trend_birth_tab = sector_leaders_tab = trend_death_tab = pd.DataFrame()
+
+>>>>>>> 03c5cc34f7ef9d7e7eadf5834ebb208ad360f07a
     run_log = pd.DataFrame([{
         "run_timestamp_utc": run_started.isoformat(),
         "nse_tickers_scored": len(nse_df),
@@ -294,7 +419,23 @@ def main():
         "category_a_count": len(category_a),
         "category_b_count": len(category_b),
         "category_c_count": len(category_c),
+<<<<<<< HEAD
+=======
+        # Phase 1 counts
+        "trend_birth_count": len(trend_birth_tab),
+        "sector_leaders_count": len(sector_leaders_tab),
+        "trend_death_count": len(trend_death_tab),
+>>>>>>> 03c5cc34f7ef9d7e7eadf5834ebb208ad360f07a
     }])
+
+    # ── My Portfolio (manually-imported Zerodha holdings) — additive, never
+    # blocks the rest of the pipeline if the holdings tab doesn't exist yet ──
+    try:
+        nifty_index_close = data_fetch.fetch_index_history(config.INDEX_TICKER_NSE)["Close"]
+        my_portfolio = portfolio.build_my_portfolio_tab(nse_df, nifty_index_close)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Portfolio enrichment failed, skipping: %s", exc)
+        my_portfolio = pd.DataFrame()
 
     tabs = {
         # Original tabs — unchanged
@@ -311,7 +452,19 @@ def main():
         config.SHEET_TABS["category_a"]: category_a,
         config.SHEET_TABS["category_b"]: category_b,
         config.SHEET_TABS["category_c"]: category_c,
+<<<<<<< HEAD
+=======
+        # Phase 1 (Elite Compounder Discovery v2.0) dashboards
+        config.SHEET_TABS["trend_birth"]: trend_birth_tab,
+        config.SHEET_TABS["sector_leaders"]: sector_leaders_tab,
+        config.SHEET_TABS["trend_death"]: trend_death_tab,
+>>>>>>> 03c5cc34f7ef9d7e7eadf5834ebb208ad360f07a
     }
+
+    # Only add the portfolio tab if there was something to show — avoids
+    # creating an empty/confusing tab before the user has set up My_Holdings.
+    if not my_portfolio.empty:
+        tabs[config.SHEET_TABS["my_portfolio"]] = my_portfolio
 
     sheets_export.export_to_sheets(tabs)
     logger.info("Scan complete and exported to Google Sheets.")

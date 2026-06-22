@@ -3,6 +3,9 @@ Fundamental metrics from yfinance financial statements:
   - Sales CAGR, Profit CAGR (from income statement, across available years)
   - ROCE = EBIT / (Total Assets - Current Liabilities)
   - Debt/Equity = Total Debt / Total Stockholder Equity
+  - Earnings Acceleration (Phase 3 / Module 1): quarter-over-quarter EPS and
+    revenue growth-rate change, see _extract_earnings_acceleration() below
+    for the QoQ-vs-YoY design choice and why.
 
 Coverage caveat: Yahoo Finance's fundamental data, especially for NSE-listed
 companies, is inconsistent — some fields are missing for many names. Every
@@ -37,6 +40,82 @@ def _cagr(begin: float, end: float, years: float):
     return float(((end / begin) ** (1 / years) - 1) * 100)
 
 
+def _qoq_growth(current: float, prior: float) -> float:
+    if current is None or prior is None or prior == 0:
+        return np.nan
+    if (current < 0) != (prior < 0) and prior < 0:
+        # Sign flips around a negative base aren't meaningful as a % growth figure
+        return np.nan
+    return float((current - prior) / abs(prior) * 100)
+
+
+def _extract_earnings_acceleration(tk: "yf.Ticker") -> dict:
+    """
+    Module 1 (Phase 3): is this stock's quarterly growth rate itself
+    speeding up or slowing down?
+
+    DESIGN CHOICE — quarter-over-quarter (QoQ), not year-over-year (YoY):
+    True YoY-based acceleration (comparing this quarter's YoY growth to last
+    quarter's YoY growth) needs 6 quarters of history (current, prior, and
+    the same-quarter-last-year pair for each). Yahoo Finance's quarterly
+    statements typically only expose ~4-5 trailing quarters via yfinance,
+    which usually isn't enough for that. QoQ only needs 3 quarters, which is
+    much more likely to actually be available — but it trades that
+    reliability for a real limitation: QoQ growth is sensitive to
+    seasonality. A retailer's Q4-vs-Q3 will look artificially strong every
+    single year regardless of underlying business health, purely because of
+    the holiday quarter. Treat earnings_acceleration_score with that caveat
+    in mind, especially for seasonal businesses — it's a genuine trade-off,
+    not a hidden bug.
+    """
+    out = {
+        "eps_growth_latest_qtr": np.nan, "eps_growth_prev_qtr": np.nan, "eps_acceleration": np.nan,
+        "revenue_growth_latest_qtr": np.nan, "revenue_growth_prev_qtr": np.nan, "revenue_acceleration": np.nan,
+        "earnings_data_quality": "missing",
+    }
+    try:
+        q_income = tk.quarterly_income_stmt
+        if q_income is None or q_income.empty or q_income.shape[1] < 3:
+            return out  # need at least 3 quarters (Q0, Q1, Q2)
+
+        quarters = q_income.columns.sort_values(ascending=True)  # oldest -> newest
+        q0, q1, q2 = quarters[-1], quarters[-2], quarters[-3]    # newest, prior, two back
+
+        fields_found = 0
+
+        eps_row = None
+        for candidate in ["Diluted EPS", "Basic EPS"]:
+            if candidate in q_income.index:
+                eps_row = candidate
+                break
+        if eps_row:
+            eps0 = q_income.loc[eps_row, q0]
+            eps1 = q_income.loc[eps_row, q1]
+            eps2 = q_income.loc[eps_row, q2]
+            out["eps_growth_latest_qtr"] = _qoq_growth(eps0, eps1)
+            out["eps_growth_prev_qtr"] = _qoq_growth(eps1, eps2)
+            if not np.isnan(out["eps_growth_latest_qtr"]) and not np.isnan(out["eps_growth_prev_qtr"]):
+                out["eps_acceleration"] = out["eps_growth_latest_qtr"] - out["eps_growth_prev_qtr"]
+                fields_found += 1
+
+        if "Total Revenue" in q_income.index:
+            rev0 = q_income.loc["Total Revenue", q0]
+            rev1 = q_income.loc["Total Revenue", q1]
+            rev2 = q_income.loc["Total Revenue", q2]
+            out["revenue_growth_latest_qtr"] = _qoq_growth(rev0, rev1)
+            out["revenue_growth_prev_qtr"] = _qoq_growth(rev1, rev2)
+            if not np.isnan(out["revenue_growth_latest_qtr"]) and not np.isnan(out["revenue_growth_prev_qtr"]):
+                out["revenue_acceleration"] = out["revenue_growth_latest_qtr"] - out["revenue_growth_prev_qtr"]
+                fields_found += 1
+
+        out["earnings_data_quality"] = "ok" if fields_found == 2 else ("partial" if fields_found == 1 else "missing")
+
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("Earnings acceleration extraction failed: %s", exc)
+
+    return out
+
+
 def _get_fundamentals_single(yf_ticker: str) -> dict:
     out = {
         "ticker": yf_ticker,
@@ -45,6 +124,9 @@ def _get_fundamentals_single(yf_ticker: str) -> dict:
         "roce": np.nan,
         "debt_equity": np.nan,
         "data_quality": "missing",
+        "eps_growth_latest_qtr": np.nan, "eps_growth_prev_qtr": np.nan, "eps_acceleration": np.nan,
+        "revenue_growth_latest_qtr": np.nan, "revenue_growth_prev_qtr": np.nan, "revenue_acceleration": np.nan,
+        "earnings_data_quality": "missing",
     }
     try:
         tk = yf.Ticker(yf_ticker)
@@ -121,6 +203,10 @@ def _get_fundamentals_single(yf_ticker: str) -> dict:
             out["data_quality"] = "partial"
         else:
             out["data_quality"] = "missing"
+
+        # Phase 3 (Module 1): earnings acceleration, isolated so a failure
+        # here can't take down the annual fundamentals computed above.
+        out.update(_extract_earnings_acceleration(tk))
 
     except Exception as exc:  # noqa: BLE001
         logger.debug("Fundamentals fetch failed for %s: %s", yf_ticker, exc)

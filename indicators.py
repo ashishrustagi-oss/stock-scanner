@@ -60,6 +60,19 @@ def resample_weekly(df: pd.DataFrame) -> pd.DataFrame:
     return weekly
 
 
+def resample_monthly(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calendar-month resampling for the Monthly Trend Confirmation module.
+    With 5 years of daily history this gives ~60 monthly bars — enough for
+    a reasonably stable monthly EMA50, though still less converged than a
+    multi-decade history would give; treat monthly EMA50 as directionally
+    useful rather than perfectly precise.
+    """
+    agg = {"Open": "first", "High": "max", "Low": "min", "Close": "last", "Volume": "sum"}
+    monthly = df.resample("ME").agg(agg).dropna(how="all")
+    return monthly
+
+
 # ----------------------------------------------------------------------------
 # ATR / Supertrend
 # ----------------------------------------------------------------------------
@@ -291,6 +304,62 @@ def macd_early_bullish(macd_line: pd.Series, signal_line: pd.Series, lookback_da
     return 1.0 if (now_bullish and crossed_recently and still_below_zero) else 0.0
 
 
+<<<<<<< HEAD
+=======
+def macd_early_bearish(macd_line: pd.Series, signal_line: pd.Series, lookback_days: int = 3) -> float:
+    """
+    Mirror image of macd_early_bullish, for the Trend Death / Distribution
+    Detection module: True if MACD just crossed BELOW Signal while MACD is
+    still ABOVE zero — the early topping signal, symmetric to the
+    early-bottoming signal used for Trend Birth.
+    """
+    if len(macd_line) < lookback_days + 2 or len(signal_line) < lookback_days + 2:
+        return np.nan
+    diff = (macd_line - signal_line).dropna()
+    if len(diff) < lookback_days + 2:
+        return np.nan
+    recent = diff.iloc[-(lookback_days + 1):]
+    now_bearish = recent.iloc[-1] < 0
+    crossed_recently = (recent.iloc[:-1] >= 0).any()
+    still_above_zero = macd_line.dropna().iloc[-1] > 0
+    return 1.0 if (now_bearish and crossed_recently and still_above_zero) else 0.0
+
+
+def obv_price_divergence(close: pd.Series, obv_series: pd.Series, window: int = 252) -> float:
+    """
+    Finds the most recent peak in price within the trailing `window`, then
+    compares how much OBV has fallen since that peak to how much price has
+    fallen since that peak.
+
+    Positive = bullish divergence: OBV held up better than price during the
+    pullback (the CAMS-chart pattern — buyers didn't actually leave even
+    though price dropped). Negative or near zero = OBV confirms the price
+    decline, no supportive divergence. Returned in percentage points
+    (obv_decline_pct - price_decline_pct).
+    """
+    price_window = close.dropna().iloc[-window:]
+    if len(price_window) < 50:
+        return np.nan
+    peak_date = price_window.idxmax()
+    peak_price = price_window.loc[peak_date]
+    current_price = price_window.iloc[-1]
+    if peak_price == 0 or np.isnan(peak_price):
+        return np.nan
+    price_decline_pct = (current_price - peak_price) / peak_price * 100
+
+    obv_aligned = obv_series.reindex(price_window.index, method="ffill")
+    if peak_date not in obv_aligned.index or pd.isna(obv_aligned.loc[peak_date]):
+        return np.nan
+    peak_obv = obv_aligned.loc[peak_date]
+    current_obv = obv_aligned.iloc[-1]
+    if peak_obv == 0 or np.isnan(peak_obv):
+        return np.nan
+    obv_decline_pct = (current_obv - peak_obv) / abs(peak_obv) * 100
+
+    return float(obv_decline_pct - price_decline_pct)
+
+
+>>>>>>> 03c5cc34f7ef9d7e7eadf5834ebb208ad360f07a
 # ----------------------------------------------------------------------------
 # Volatility compression (ATR ratio + range compression)
 # ----------------------------------------------------------------------------

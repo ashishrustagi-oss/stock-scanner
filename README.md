@@ -158,6 +158,345 @@ Everything tunable lives in **`config.py`**:
   (times are UTC)
 
 ---
+## MF / FII Shareholding Trend (NSE only — highest-risk module)
+
+Tracks whether Mutual Fund and FII/FPI holding % is **increasing quarter-over-
+quarter** — a classic "smart money" accumulation signal, separate from
+everything else in this system.
+
+**Why this is the riskiest part of the whole build:** every other data source
+here (yfinance prices, sector ETFs, S&P500/NSE500 lists) has a clean,
+well-documented format. Shareholding pattern data does not — it's a
+quarterly SEBI regulatory filing, usually submitted as XBRL (structured XML)
+with a PDF attachment, and the exact field names / table layout can vary by
+which filing software the company used. This module:
+
+1. Queries NSE's corporate-filings API for each NSE stock's shareholding
+   pattern filings (`config.NSE_SHAREHOLDING_API_URL` — **fix this first**
+   if nothing resolves at all).
+2. Tries to parse the XBRL attachment using flexible keyword-based tag
+   matching (looks for tags containing "mutualfund"/"foreignportfolio" +
+   "percentage", not exact hardcoded paths).
+3. Falls back to parsing the PDF attachment's summary table the same way —
+   by keyword-matching row labels ("Mutual Funds", "Foreign Portfolio
+   Investors") rather than assuming a fixed column position.
+4. Caches each quarter found in `cache/shareholding_history.json`
+   permanently — once 2+ quarters are on file for a stock, the
+   increasing/decreasing flag becomes available. **Expect the first couple
+   of quarters to just show missing/blank trend flags** until enough
+   history accumulates; this is expected, not a bug.
+
+**New columns** (NSE tabs only — blank on US tabs, this is an Indian
+regulatory concept with no equivalent built here): `mf_holding_pct`,
+`fii_holding_pct`, previous-quarter values, `mf_holding_increasing`,
+`fii_holding_increasing`, visual flags, and `shareholding_data_quality`.
+
+**This is informational only** — it does NOT feed into `composite_score` or
+`EliteCompounderScore`, specifically so a shaky data source can't quietly
+degrade either already-tuned scoring system. If the parsing logic turns out
+to work well after a few live runs, ask and I can fold a weighted
+contribution into the Elite score.
+
+**Realistic expectation:** the XBRL/PDF parsing logic is tested against
+synthetic data that mimics the standard SEBI format, but has not been tested
+against a real NSE filing (no network access to verify the exact API/file
+formats from where this was built). The first live run's
+`shareholding_data_quality` column will tell us whether the approach works
+at all — if most rows show `missing`, send me the Actions log and we'll fix
+it the same way we fixed the sector mapping, likely needing 2-3 rounds given
+the added complexity of PDF/XBRL parsing vs. the simple CSVs used elsewhere.
+
+## My Portfolio — your actual Zerodha holdings, scored
+
+A separate tab (`My_Portfolio_Scored`) that takes your real holdings and runs
+them through the exact same scoring pipeline as the NSE500/S&P500 scan —
+composite score, category, EliteCompounderScore, OBV/Supertrend/MACD
+signals, plus your invested value, current value, and P&L%.
+
+### One-time setup
+
+1. In Zerodha Console, go to **Holdings → Export** and download the XLSX.
+2. In your Google Sheet, go to **File → Import**.
+3. Click **Upload**, select the downloaded XLSX.
+4. Choose **Insert new sheet(s)**, then click **Import data**.
+5. Rename the newly-created tab to exactly `My_Holdings` (right-click the
+   tab → Rename).
+
+That's it — the next scheduled run will pick it up automatically and create
+`My_Portfolio_Scored`.
+
+### Updating your holdings later
+
+Whenever you trade, just repeat steps 1-4 above (File → Import → Replace
+current sheet, selecting your existing `My_Holdings` tab as the target this
+time). This script only ever **reads** `My_Holdings`, never writes to it, so
+re-importing never conflicts with anything automated here.
+
+### How scoring works for your holdings
+
+- **Already in the NSE500 scan** (true for most large/mid-cap holdings):
+  full treatment — composite_score, EliteCompounderScore, all the same
+  signals as the main scan, zero extra cost since it's already computed.
+- **Not in the top-500 scan universe** (smaller-cap holdings): technical
+  indicators are still fetched and computed fresh (OBV, MACD, Supertrend,
+  RS vs Nifty), but `composite_score` and `EliteCompounderScore` show
+  "Outside scan universe" instead of a number — both scores are
+  cross-sectional percentile rankings, which are statistically meaningless
+  computed against a peer group of one or two stocks. Showing a fake number
+  there would be misleading rather than informative.
+
+### Live price
+
+`live_price` and `live_day_change_pct` are `GOOGLEFINANCE()` formulas written
+into the sheet — once written, they keep updating live in your browser
+independent of the daily script run. Assumes NSE-listed holdings (`NSE:`
+prefix); if you hold US stocks too, you'd want to adjust those two formulas
+manually for those specific rows.
+
+## Phase 1 — Elite Compounder Discovery System v2.0
+
+Four modules, all built entirely from data already being fetched — no new
+external data sources, no changes to `composite_score` or
+`EliteCompounderScore`.
+
+### Module 3: RS Percentile Rank
+`rs_rank` — where this stock's `RS_vs_Broad_Index_pct` ranks (0-100) within
+its own universe. One column rather than the originally-discussed
+`rs_rank_nse500`/`rs_rank_sp500` pair, since a stock only ever belongs to one
+universe — a single column carries the same information without an
+always-blank twin. `rs_rank_score` (0/5/10/15) and `flag_rs_top_decile`
+(🟢 above rank 90) ride alongside it. Currently informational only — not
+folded into any existing score.
+
+### Module 4: Trend Birth Detection
+`trend_birth_flag` — fires when price just reclaimed EMA20, MACD just turned
+bullish while still below zero, OBV has been rising for 13 weeks, and the
+stock isn't more than 25% off its highs. Meant to catch the "just starting
+to turn" moment, distinct from the already-confirmed-trend signals
+elsewhere. New tab: **`TREND_BIRTH`**, sorted by `trend_birth_score`.
+
+### Module 5: Monthly Trend Confirmation
+Adds a third timeframe (daily → weekly → **monthly**) using the same
+12/26/9 MACD convention and 20/50-period EMA cross, computed on
+calendar-month candles. `monthly_bullish` requires both monthly MACD>signal
+AND monthly EMA20>EMA50.
+
+**Trade-off made to support this:** `PRICE_HISTORY_PERIOD` was bumped from
+3 years to 5 years (`config.py`) so the monthly EMA50 has ~60 monthly bars
+to work with instead of ~36 — still less converged than a multi-decade
+history would give, so treat monthly EMA50 as directionally useful, not
+perfectly precise.
+
+### Module 6: Sector Leadership Engine
+Ranks stocks within their own **(universe, sector)** group — NSE and US
+stocks are never mixed even if a sector label looks similar on both sides.
+**Ranking basis: `EliteCompounderScore`** — chosen because it's already a
+normalized 0-100 score safe to compare directly within a small group, and
+it's the system built specifically for leadership/early detection. If you'd
+rather rank by `composite_score` or pure RS-vs-sector instead, that's a
+one-line change in `scoring.py`'s `compute_sector_leadership()`. Top 3 get
+points (15/10/5) and a 🟢 flag; new tab **`SECTOR_LEADERS`** shows the top 5
+per sector group.
+
+### A note on the column layout
+
+Adding 4 new headline flags pushed the "headline vs. detail" boundary in
+every wide tab from **column R to column V** — everything up through V is
+still flat/visible; the collapsible detail group now starts at V instead of R.
+
+## Phase 2 — Institutional Accumulation Scoring (Module 2 extension)
+
+Builds on the MF/FII shareholding trend (NSE-only, same scope as before) by
+adding quarter-over-quarter magnitude and 2-quarter streak detection.
+
+**New columns:** `mf_holding_change_qoq` / `fii_holding_change_qoq` (the
+actual percentage-point change, not just the up/down boolean),
+`mf_increasing_2q_streak` / `fii_increasing_2q_streak` (was it increasing
+the quarter before that too?), `institutional_accumulation_score` (0-20),
+`flag_institutional_accumulation`.
+
+**Scoring (resolves an ambiguity in the original spec):** the spec listed
+"MF increasing: +5" and "MF increasing 2 quarters: +10" as separate line
+items, but summing all four literally would max out at 30, not the stated
+"Maximum = 20." The two tiers **don't stack** — a 2-quarter streak already
+implies the latest quarter was increasing too, so it replaces the
+single-quarter tier rather than adding to it:
+
+| MF/FII state | Points (each side, max 10) |
+|---|---|
+| Increasing 2 quarters in a row | 10 |
+| Increasing just the latest quarter (or streak broke) | 5 |
+| Not increasing / no data | 0 |
+
+MF max 10 + FII max 10 = 20 total, matching the spec's stated maximum.
+`flag_institutional_accumulation` fires when the combined score exceeds 10
+— meaning at least one side needs a real 2-quarter streak; two stocks each
+just nudging up one quarter (5+5=10) doesn't clear the bar on its own.
+
+**Important timing expectation:** the 2-quarter streak fields need **3
+quarters of real history** on file for a stock before they can resolve to
+`TRUE`/`FALSE` instead of blank. Since the shareholding cache only started
+accumulating recently (and only gets ~60 new tickers per run due to NSE's
+rate limiting), most stocks will show blank streak fields for several
+months yet — falling back to the single-quarter `+5` tier in the meantime.
+This isn't a bug; quarterly data just takes real calendar quarters to build
+up. Not informational only this time, though it's still completely separate
+from `composite_score` and `EliteCompounderScore` — neither existing system
+is touched.
+
+## Phase 3 — Earnings Acceleration Engine (Module 1, highest-risk phase)
+
+Asks: is this stock's quarterly growth rate itself speeding up or slowing
+down — not just "is it growing," but "is growth accelerating."
+
+**New columns:** `eps_growth_latest_qtr` / `eps_growth_prev_qtr` /
+`eps_acceleration`, the same three for revenue, plus
+`earnings_acceleration_score` (0-20) and `flag_earnings_accelerating`.
+Applies to **both** NSE and US (unlike MF/FII — yfinance exposes quarterly
+statements for both universes).
+
+### The key design decision: quarter-over-quarter, not year-over-year
+
+True earnings acceleration in professional research usually compares this
+quarter's YoY growth rate to last quarter's YoY growth rate — which needs
+**6 quarters** of history (current + prior, each compared to its own
+same-quarter-last-year). Yahoo Finance's quarterly statements via yfinance
+typically only expose ~4-5 trailing quarters, which usually isn't enough
+for that.
+
+So this uses **quarter-over-quarter (QoQ)** growth instead — comparing each
+quarter only to the one immediately before it, needing just 3 quarters of
+history (much more likely to actually be available). The trade-off:
+**QoQ is sensitive to seasonality.** A retailer's Q4-vs-Q3 will look
+artificially strong every single year purely because of the holiday
+quarter, regardless of whether the underlying business is actually
+improving. This is a genuine, known limitation — not a hidden bug — and
+worth keeping in mind especially for seasonal businesses (retail, certain
+consumer names). If you get access to a data source with deeper quarterly
+history later, switching to true YoY-based acceleration would be a
+meaningful upgrade — ask and I can wire it in.
+
+### Scoring
+
+EPS acceleration and revenue acceleration are independent signals and **do
+stack** here (unlike Module 2's MF/FII tiers, which don't) — max 10 + max
+10 = 20, matching the original spec directly with no ambiguity to resolve.
+
+| Signal | Threshold | Points |
+|---|---|---|
+| EPS acceleration | >20 percentage points | +10 |
+| EPS acceleration | 10-20 points | +5 |
+| Revenue acceleration | >15 percentage points | +10 |
+| Revenue acceleration | 5-15 points | +5 |
+
+`flag_earnings_accelerating` fires when the combined score exceeds 10.
+
+### Realistic expectation
+
+Tested against synthetic data shaped exactly like yfinance's real quarterly
+statement format (verified the math by hand). What I can't verify from here
+is whether yfinance's actual field names ("Diluted EPS" vs "Basic EPS") and
+quarter depth hold up the same way across hundreds of real NSE/US tickers —
+check `earnings_data_quality` after the first live run; if it's mostly
+`missing`, send me the pattern and we'll adjust the field-name fallbacks.
+
+## Chart Study Additions — Trend Death + OBV-Price Divergence
+
+Built from studying real charts of BEL, Bharat Forge, CAMS, MTAR Tech, CDSL,
+ADANIPORTS, IDFCFIRSTB, JYOTICNC, and Persistent — see the conversation for
+the full visual read. Two new, standalone modules (neither folds into
+composite_score or EliteCompounderScore):
+
+### Trend Death / Distribution Detection
+The mirror image of Trend Birth, for the "exit losers" side of the system:
+fires when price just broke below EMA20, MACD just turned bearish *while
+still above zero* (the topping equivalent of "early bullish below zero"),
+OBV has been falling for 13 weeks, AND the stock is still within 15% of its
+52-week high — deliberately tighter than Trend Birth's -25% floor, since
+this is meant to catch the START of a top while still close to highs, not
+stocks that have already broken down hard. New tab: **TREND_DEATH**.
+Visual flag uses 🔴 (not 🟢) to make it visually distinct as a warning.
+
+### OBV-Price Divergence
+Directly inspired by the CAMS chart, which pulled back ~35% from its highs
+in 2025 without OBV meaningfully declining — buyers didn't actually leave
+even though price dropped. `obv_price_divergence` finds the most recent
+price peak, then compares how much OBV has fallen since that peak to how
+much price has fallen. Positive = bullish (OBV held up better than price).
+`flag_bullish_obv_divergence` only fires if there was a real pullback of at
+least 5% (a stock that hasn't pulled back has nothing to diverge from) and
+the divergence exceeds 10 percentage points.
+
+**Honest framing:** both of these came from reading 8-9 winning charts
+visually, not from a statistical backtest. See the next section for the
+actual rigorous validation tool.
+
+## Backtest Framework — rigorous signal validation, not chart-reading
+
+`backtest.py` is a genuinely separate tool from the daily scan: a
+walk-forward simulation that tests whether any given signal (Trend Birth,
+EliteCompounderScore thresholds, OBV 52w-high, etc.) actually preceded
+real outperformance, across a real universe and many historical dates —
+not just the handful of winning charts that prompted building it.
+
+### How it avoids the trap the chart study couldn't avoid
+
+The chart study only looked at survivors — stocks that already became
+compounders — with no way to tell how many *other* stocks showed the same
+early pattern and went nowhere. This backtest fixes that by testing every
+signal against the **entire universe** (winners, losers, and everything
+in between) across dozens of historical snapshot dates automatically.
+
+### No-lookahead-bias guarantee (the most important property of any backtest)
+
+At each historical "as-of" date, every indicator is computed using ONLY
+price data up to and including that date — exactly what would have been
+knowable at the time. I verified this directly: computed signals on a
+synthetic stock with the full future price history sitting in memory, then
+again with that future data physically removed before computation — the
+two runs produced bit-for-bit identical results. If there were a lookahead
+leak anywhere in the indicator chain, those two scenarios would differ.
+
+### What it measures
+
+For each signal: sample size, mean/median forward return at 1/3/6/12
+months, hit rate (% of instances with a positive forward return), and the
+**excess return vs. the benchmark index over the same dates** — the number
+that actually matters, since a signal that just rides a generally rising
+market isn't adding anything.
+
+### Key simplification
+
+`fundamentally_qualified` is set `True` for every historical row — point-in-
+time historical fundamentals are a much harder data problem than this tool
+needs to solve to be useful. This means the backtest measures the
+**technical signals' predictive power in isolation**, not combined with
+the fundamental gate real-world categorization also requires.
+
+### Running it
+
+This is **far more compute-intensive** than the daily scan (every indicator
+recomputed at every snapshot date) and is **not** part of the daily
+schedule — it has its own workflow (`.github/workflows/backtest_workflow.yml`),
+manual-trigger only. Start small: the defaults in `config.py`
+(`BACKTEST_MAX_TICKERS = 100`, monthly snapshots, 3-year lookback) are
+deliberately conservative. Results land in a new `Backtest_Results` Sheet
+tab and as a downloadable CSV artifact on the GitHub Actions run page.
+Widen `BACKTEST_MAX_TICKERS` / `BACKTEST_LOOKBACK_YEARS` / switch
+`BACKTEST_SNAPSHOT_FREQ` to weekly only after confirming a smaller run
+finishes in a reasonable time — each added ticker and each added snapshot
+multiplies the runtime.
+
+### What I tested vs. what only a real run can tell you
+
+I validated the **mechanics** thoroughly with synthetic data: forward-return
+math is correct, there's no lookahead leakage, and the full pipeline runs
+end-to-end across multiple tickers and dates without errors. What I could
+not test from here (no live data access) is whether any signal actually
+shows real predictive edge on real NSE/US history — that's exactly what
+running this for real will tell you, and it might show some signals here
+don't hold up as well as the chart study suggested. That's the point.
+
 ## Known limitations — read before relying on this
 
 - **NSE fundamental coverage via Yahoo Finance is patchy.** Many Indian
