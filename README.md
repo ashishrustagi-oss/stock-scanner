@@ -418,23 +418,39 @@ Sector Leaders).
 ## NSE Small/Micro-cap tier — raw, deliberately unscored
 
 A third, fully separate universe alongside NSE500 and S&P500: **Nifty
-Smallcap 250 + Nifty Microcap 250 combined**, in a new
-`NSE_SmallMicro_Full_Scan` tab.
+Smallcap 250** (Microcap 250 designed-in but currently disabled — see
+"Current status" below), in a new `NSE_SmallMicro_Full_Scan` tab.
+
+**Current status (22-06-2026): Smallcap 250 only, live.** Microcap 250's
+only known free source — niftyindices.com's backend, reached via its raw
+Azure App Service hostname (`nseindex-prod-app.azurewebsites.net`, found by
+capturing the URL the site's own Download button hits; it's not on
+`nsearchives.nseindia.com` or the usual `niftyindices.com/IndexConstituent/`
+path the way every other Nifty index list is) — returns `403 Ip Forbidden`
+specifically for GitHub Actions runner IPs. Confirmed the URL itself is
+correct (works from an ordinary browser); this is an IP-range block, not a
+header/cookie/URL problem, so it can't be fixed in code from here.
+`config.NSE_MICROCAP_ENABLED = False` skips the fetch attempt entirely
+(rather than retrying 3x against a known-blocked URL on every run) and the
+pipeline runs on Smallcap 250 alone, which fetches cleanly with zero
+issues. To revisit: either a self-hosted GitHub Actions runner (not on
+Azure/AWS/GCP IP ranges) would likely get through, or a periodic manual
+download committed as a static seed file (NSE rebalances this list only
+twice a year, end of Jan/July, so it wouldn't go stale fast) — flip
+`NSE_MICROCAP_ENABLED` back to `True` once either exists; no other code
+changes needed, `get_nse_smallmicro_universe()` already handles both states.
 
 **Why a third universe and not just a bigger NSE500.** By NSE's own index
 rules, Smallcap 250 must already be a Nifty 500 member — including it on
 its own would add ~zero genuinely new tickers, just a label on stocks
 already in `NSE500_Full_Scan`. Microcap 250 is the opposite: stocks already
 in (or entering) Nifty 500 are **compulsorily ineligible** for it — it's
-built from the rank ~351–675 band sitting just beyond the Nifty 500 floor.
-Combining both is the smallest fetch that gets genuinely new names without
-going all the way to NSE's full ~2,000-name equity list (`EQUITY_L.csv`),
-which was considered and deliberately rejected: that would roughly double
-total universe size, push the MF/FII shareholding module's full-coverage
-cycle from ~9 runs to ~25, and add a tier of names yfinance covers
-noticeably worse than even the existing "patchy" NSE500 fundamentals
-coverage. Smallcap+Microcap 250 keeps the new tier inside ~250 net-new,
-bounded names.
+built from the rank ~351–675 band sitting just beyond the Nifty 500 floor,
+and would be where the genuinely new tickers come from once re-enabled.
+Smallcap+Microcap 250 (vs. going all the way to NSE's full ~2,000-name
+equity list, `EQUITY_L.csv`, which was considered and deliberately
+rejected — see chat history) keeps the new tier inside ~250-500 net-new,
+bounded names rather than roughly doubling total universe size.
 
 **Why it's NOT merged into `combined` / NSE500.** `composite_score` and
 `EliteCompounderScore` are percentile-ranked and were tuned/backtested
@@ -456,10 +472,10 @@ contamination risk.
 
 **No shareholding for this tier.** The MF/FII module is already capped at
 60 tickers/run by NSE's rate limit, and full NSE500 coverage alone takes
-~9 runs. Adding ~250 more names would stretch that to ~1 month for full
-coverage. NSE500 keeps sole priority — the shareholding gate in
-`main.py` checks `label == "NSE500"` (strict equality, deliberately, not a
-prefix check) so the new tier is correctly excluded.
+~9 runs. Adding ~250 more names (more once Microcap 250 is re-enabled)
+would stretch that further. NSE500 keeps sole priority — the shareholding
+gate in `main.py` checks `label == "NSE500"` (strict equality, deliberately,
+not a prefix check) so the new tier is correctly excluded.
 
 **One real bug caught and fixed while wiring this in:** `sector_data.py`'s
 sector-benchmark mapping used to check `universe_label == "NSE500"` to

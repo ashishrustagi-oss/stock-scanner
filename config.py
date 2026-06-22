@@ -46,19 +46,25 @@ NSE_FALLBACK_TICKERS = [
 # SP500 liquidity and data-quality patterns).
 NSE_SMALLCAP250_SOURCE_URL = "https://nsearchives.nseindia.com/content/indices/ind_niftysmallcap250list.csv"
 # Microcap 250 is NOT served from nsearchives.nseindia.com or niftyindices.com's
-# usual /IndexConstituent/ path the way every other Nifty index list is — that
-# was the original (wrong) URL here, confirmed 404 on the first live run
-# (22-06-2026). The working source is niftyindices.com's own backend, reached
-# directly via its raw Azure App Service hostname rather than the custom
-# domain. Confirmed working by manually clicking the Download button on
+# usual /IndexConstituent/ path the way every other Nifty index list is. The
+# real source is niftyindices.com's own backend, reached directly via its raw
+# Azure App Service hostname rather than the custom domain — found by
+# manually clicking the Download button on
 # https://www.niftyindices.com/indices/equity/broad-based-indices/nifty-microcap-250
-# and capturing the URL it actually hits. This is structurally less stable
-# than the other source URLs here — a bare *.azurewebsites.net hostname is
-# what you get before/without a custom domain pointed at it, so it can change
-# if NSE Indices ever redeploys or reconfigures hosting. If this one starts
-# 404ing, check that page again for a new Download-button URL rather than
-# assuming the file's path is what changed.
+# and capturing the URL it actually hits. The URL itself is correct (works
+# from a regular browser) — but see NSE_MICROCAP_ENABLED below for why this
+# is currently disabled regardless.
 NSE_MICROCAP250_SOURCE_URL = "https://nseindex-prod-app.azurewebsites.net/IndexConstituent/ind_niftymicrocap250_list.csv"
+# Microcap 250 fetch is DISABLED by default (22-06-2026): the Azure backend
+# above 403s ("Ip Forbidden") specifically for GitHub Actions' runner IPs —
+# an IP-range block, not a header/cookie/URL problem, which can't be fixed
+# in code. Smallcap 250 fetches cleanly with zero issues. Decision: ship
+# Smallcap 250 only for now rather than build around a fetch that fails on
+# every single automated run. To re-enable once a workaround exists (e.g. a
+# self-hosted runner, or NSE/niftyindices changes their blocking), flip this
+# to True — no other code changes needed, get_nse_smallmicro_universe()
+# already handles both states.
+NSE_MICROCAP_ENABLED = False
 
 # Same emergency-only purpose as NSE_FALLBACK_TICKERS above — a handful of
 # liquid-ish small/microcap names so the pipeline doesn't crash if both live

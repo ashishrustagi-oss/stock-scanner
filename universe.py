@@ -129,11 +129,20 @@ def get_nse_smallmicro_universe() -> pd.DataFrame:
         logger.error("Smallcap 250 fetch failed entirely: %s", exc)
         smallcap = pd.DataFrame(columns=["ticker", "yf_ticker", "name", "sector"])
 
-    try:
-        microcap = _fetch_nse_index_csv(session, config.NSE_MICROCAP250_SOURCE_URL, min_rows=100)
-        logger.info("Fetched live Microcap 250 list: %d tickers", len(microcap))
-    except Exception as exc:  # noqa: BLE001
-        logger.error("Microcap 250 fetch failed entirely: %s", exc)
+    if config.NSE_MICROCAP_ENABLED:
+        try:
+            microcap = _fetch_nse_index_csv(session, config.NSE_MICROCAP250_SOURCE_URL, min_rows=100)
+            logger.info("Fetched live Microcap 250 list: %d tickers", len(microcap))
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Microcap 250 fetch failed entirely: %s", exc)
+            microcap = pd.DataFrame(columns=["ticker", "yf_ticker", "name", "sector"])
+    else:
+        # Skip the attempt entirely rather than retry 3x against a URL known
+        # to IP-block GitHub Actions runners — see config.NSE_MICROCAP_ENABLED.
+        logger.info(
+            "Microcap 250 fetch skipped (config.NSE_MICROCAP_ENABLED=False) — "
+            "running with Smallcap 250 only. See config.py for why."
+        )
         microcap = pd.DataFrame(columns=["ticker", "yf_ticker", "name", "sector"])
 
     combined = pd.concat([smallcap, microcap], ignore_index=True).drop_duplicates(subset="ticker")
@@ -154,7 +163,8 @@ def get_nse_smallmicro_universe() -> pd.DataFrame:
         )
 
     logger.info(
-        "NSE Small/Micro universe ready: %d unique tickers (%d smallcap, %d microcap, overlap-deduped)",
+        "NSE Small/Micro universe ready: %d unique tickers (%d smallcap, %d microcap%s)",
         len(combined), len(smallcap), len(microcap),
+        ", overlap-deduped" if config.NSE_MICROCAP_ENABLED else " — microcap fetch disabled",
     )
     return combined
