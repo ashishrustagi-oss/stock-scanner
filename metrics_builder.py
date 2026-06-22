@@ -71,6 +71,10 @@ def build_metrics_row(
         "obv_slope_13w":          ind.obv_slope(obv_series, config.WEEKS_13_IN_DAYS),
         "obv_slope_26w":          ind.obv_slope(obv_series, config.WEEKS_26_IN_DAYS),
         "obv_price_divergence":   ind.obv_price_divergence(close, obv_series),
+        # ── Liquidity (built for the NSE Small/Micro-cap tier's score gate —
+        # see scoring.py compute_smallmicro_score; NSE500/SP500 never needed
+        # this since every constituent there is liquid by default) ──
+        "avg_daily_traded_value": ind.avg_daily_traded_value(df, config.LIQUIDITY_LOOKBACK_DAYS),
         # ── Daily MACD (original) ──
         "daily_macd":             float(daily_macd.iloc[-1]),
         "daily_signal":           float(daily_signal.iloc[-1]),

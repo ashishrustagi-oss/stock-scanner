@@ -203,6 +203,31 @@ def obv_52w_range_pct(obv_series: pd.Series) -> float:
     return float((window.iloc[-1] - lo) / rng * 100)
 
 
+def avg_daily_traded_value(df: pd.DataFrame, window_days: int = 20) -> float:
+    """
+    Average daily traded value (price * volume) over the trailing
+    `window_days`, in rupees (or whatever currency the price series is in).
+
+    Built specifically for the NSE Small/Micro-cap tier's liquidity gate
+    (see scoring.py SmallMicroScore) — NSE500/SP500 never needed this
+    because every constituent there is liquid enough that it's a non-issue.
+    A small/microcap stock can show a great MACD crossover or OBV slope on
+    a handful of thinly-traded days that mean nothing tradeable; this
+    metric exists to catch that before any technical signal is trusted.
+
+    Returns NaN if there's not enough history to compute a meaningful
+    average (mirrors the no-data handling pattern used elsewhere in this
+    module, e.g. obv_52w_range_pct above).
+    """
+    if "Close" not in df.columns or "Volume" not in df.columns:
+        return np.nan
+    window = df[["Close", "Volume"]].dropna().iloc[-window_days:]
+    if len(window) < max(5, window_days // 4):   # need at least a handful of real trading days
+        return np.nan
+    traded_value = window["Close"] * window["Volume"]
+    return float(traded_value.mean())
+
+
 # ----------------------------------------------------------------------------
 # Weekly Supertrend
 # ----------------------------------------------------------------------------

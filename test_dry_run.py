@@ -199,5 +199,17 @@ assert not leaked, f"Scoring/shareholding columns leaked into the unscored tier:
 print("Confirmed: no scoring or shareholding columns present in NSE_SmallMicro_Full_Scan.")
 print(smc[["ticker", "sector", "RS_vs_Broad_Index_pct", "data_quality"]].head(10).to_string())
 
+print("\n=== SmallMicroScore detail ===")
+print(smc[["ticker", "smallmicro_score", "smallmicro_category", "smallmicro_score_basis",
+           "liquidity_qualified", "avg_daily_traded_value"]].sort_values(
+    "smallmicro_score", ascending=False, na_position="last"
+).to_string())
+print("\nCategory counts:")
+print(smc["smallmicro_category"].value_counts())
+print("\nBasis counts:")
+print(smc["smallmicro_score_basis"].value_counts())
+assert smc["smallmicro_score"].dropna().between(0, 100).all(), "smallmicro_score out of 0-100 range!"
+print("\nConfirmed: all non-NaN smallmicro_score values are within 0-100.")
+
 print("\nDRY RUN PASSED - no exceptions")
 

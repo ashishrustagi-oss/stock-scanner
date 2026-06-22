@@ -43,13 +43,21 @@ def process_universe(label: str, universe_df: pd.DataFrame, index_ticker: str, s
     """
     skip_scoring=True computes per-ticker indicators and fundamentals as
     normal, but skips composite_score, EliteCompounderScore, and every
-    cross-sectional/percentile-rank module (rs_rank, sector_rank,
-    obv_leadership_rank, institutional_accumulation_score). Those formulas
-    were tuned/backtested against NSE500+SP500 liquidity and data-quality
-    patterns; running them on a thinner, less-liquid universe would silently
-    distort the percentiles for the universe they WERE validated on if ever
-    combined, and would themselves be meaningless without separate
-    backtesting. Used for the NSE_SmallMicro tier — see README.
+    NSE500/SP500 cross-sectional/percentile-rank module (rs_rank,
+    sector_rank, obv_leadership_rank, institutional_accumulation_score).
+    Those formulas were tuned/backtested against NSE500+SP500 liquidity and
+    data-quality patterns; running them on a thinner, less-liquid universe
+    would silently distort the percentiles for the universe they WERE
+    validated on if ever combined, and would themselves be meaningless
+    without separate backtesting.
+
+    Instead, this branch computes its OWN separate scoring system —
+    SmallMicroScore (scoring.py: compute_liquidity_gate +
+    compute_smallmicro_score) — designed specifically for this tier rather
+    than adapted from the other two. See scoring.py and config.py for the
+    full rationale; treat its output as an unvalidated starting point, not
+    a trusted signal, until backtested separately. Used for the
+    NSE_SmallMicro tier — see README.
     """
     logger.info("=== Processing %s universe (%d tickers) ===", label, len(universe_df))
 
@@ -88,16 +96,27 @@ def process_universe(label: str, universe_df: pd.DataFrame, index_ticker: str, s
     )
 
     if skip_scoring:
-        # Raw tier: per-ticker indicators + fundamentals only. No
-        # composite_score, no EliteCompounderScore, no cross-sectional
-        # ranks (rs_rank, sector_rank, obv_leadership_rank, institutional
-        # accumulation), no shareholding. Single RS-vs-broad-index column
-        # kept since it's a per-ticker figure, not a rank.
+        # Raw-indicators tier, PLUS its own separate scoring system
+        # (SmallMicroScore — see scoring.py and config.py for full
+        # rationale). Still gets NONE of NSE500/SP500's backtested scoring:
+        # no composite_score, no EliteCompounderScore, no
+        # obv_leadership_rank/rs_rank/sector_rank/institutional_accumulation
+        # (those are tuned/backtested specifically for NSE500+SP500 and
+        # would be meaningless — or worse, falsely authoritative-looking —
+        # if computed here). No shareholding either (see README).
         metrics_df["RS_vs_Broad_Index_pct"] = metrics_df["rs_score"]
-        metrics_df = sc.compute_earnings_acceleration_score(metrics_df)  # per-ticker, not a rank
+        metrics_df = sc.compute_earnings_acceleration_score(metrics_df)  # per-ticker, not a rank — safe to reuse as-is
+        metrics_df = sc.compute_liquidity_gate(metrics_df)               # must run before compute_smallmicro_score
+        metrics_df = sc.compute_smallmicro_score(metrics_df)              # SEPARATE system, NOT composite_score reweighted
         metrics_df["universe"] = label
-        metrics_df = metrics_df.sort_values("RS_vs_Broad_Index_pct", ascending=False).reset_index(drop=True)
-        logger.info("%s done (unscored, raw tier): %d tickers", label, len(metrics_df))
+        metrics_df = metrics_df.sort_values("smallmicro_score", ascending=False, na_position="last").reset_index(drop=True)
+        logger.info(
+            "%s done (separate SmallMicroScore, not NSE500/SP500's backtested system): "
+            "%d total, %d liquidity-qualified, %d scored 'Strong'",
+            label, len(metrics_df),
+            int((metrics_df["liquidity_qualified"] == True).sum()),  # noqa: E712
+            int((metrics_df["smallmicro_category"] == "Strong").sum()),
+        )
         return metrics_df
 
     # Original composite scoring system — unchanged
@@ -245,16 +264,24 @@ DISPLAY_COLUMNS = [
     "obv_price_divergence", "obv_leadership_rank",
 ]
 
-# Raw tier — NSE_SmallMicro. Deliberately excludes composite_score,
-# EliteCompounderScore, category, elite_category, every flag/rank that's
-# cross-sectional (rs_rank, sector_rank, obv_leadership_rank, trend_birth,
-# trend_death, institutional_accumulation), and all shareholding columns —
-# none of those are computed for this tier (skip_scoring=True). Keeping a
-# separate list (rather than filtering DISPLAY_COLUMNS down) makes it
-# obvious at a glance which columns this tier is meant to have, instead of
-# relying on "whatever happens to exist in the dataframe."
+# Raw + SmallMicroScore tier — NSE_SmallMicro. Deliberately excludes
+# composite_score, EliteCompounderScore, category, elite_category, every
+# NSE500/SP500-specific cross-sectional flag/rank (rs_rank, sector_rank,
+# obv_leadership_rank, trend_birth, trend_death, institutional_accumulation),
+# and all shareholding columns — none of those are computed for this tier
+# (skip_scoring=True). DOES include smallmicro_score and its supporting
+# columns — see scoring.py for why that's a separate, purpose-built system
+# rather than a reweighted copy of the other two. Keeping a separate list
+# (rather than filtering DISPLAY_COLUMNS down) makes it obvious at a glance
+# which columns this tier is meant to have, instead of relying on "whatever
+# happens to exist in the dataframe."
 RAW_DISPLAY_COLUMNS = [
     "ticker", "name", "sector", "universe", "close",
+    # SmallMicroScore — leads the column list since it's the main thing to
+    # look at; smallmicro_score_basis explains every NaN/category at a
+    # glance without cross-referencing config.py or scoring.py.
+    "smallmicro_score", "smallmicro_category", "smallmicro_score_basis", "smallmicro_score_coverage_pct",
+    "liquidity_qualified", "avg_daily_traded_value",
     "RS_vs_Broad_Index_pct", "rs_score",
     # OBV
     "obv_slope_20d", "obv_slope_50d", "obv_52w_range_pct",

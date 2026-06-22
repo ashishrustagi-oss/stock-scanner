@@ -74,6 +74,56 @@ NSE_SMALLMICRO_FALLBACK_TICKERS = [
     "RAINBOW", "CLEAN", "ANGELONE", "AARTIIND", "BEML",
 ]
 
+# ----------------------------------------------------------------------------
+# SmallMicroScore — a SEPARATE scoring system for the NSE Small/Micro-cap
+# tier only. Deliberately NOT a reweighted copy of composite_score or
+# EliteCompounderScore: those were tuned/backtested specifically against
+# NSE500+SP500 liquidity and data-quality patterns (see README "Backtest
+# Framework"), and there is zero backtest evidence for any formula on this
+# thinner, less-liquid, more data-sparse universe. Every weight below is a
+# DELIBERATELY LABELED, UNVALIDATED DEFAULT — same epistemic status as a
+# first cut, not a tuned result. Revisit once this tier has its own
+# walk-forward backtest (see backtest.py methodology).
+#
+# Liquidity gate (computed FIRST, before any score): small/microcap stocks
+# can show a great-looking MACD crossover or OBV slope on a handful of
+# thinly-traded days that mean nothing tradeable — NSE500/SP500 never
+# needed this gate because every constituent there is liquid enough by
+# default. No precise, citable "right" threshold exists for this (checked);
+# this number is a deliberately conservative starting point for you to
+# tune after seeing real output, exactly like MIN_SALES_CAGR/MIN_ROCE below.
+LIQUIDITY_LOOKBACK_DAYS = 20                  # trading days averaged for avg_daily_traded_value
+MIN_AVG_DAILY_TRADED_VALUE_INR = 5_000_000    # ₹50 lakh/day — UNVALIDATED starting default, tune freely
+LIQUIDITY_DATA_QUALITY_MIN_DAYS = 10          # need at least this many real trading days in the window to trust the average
+
+# SmallMicroScore component weights (must sum to 100). No shareholding
+# weight exists here (NSE_SMALLMICRO never gets MF/FII data — see
+# README), redistributed into Earnings Acceleration instead since that's
+# real, computed, per-ticker (not a cross-sectional rank, so safe to use
+# without contaminating anything), and otherwise unused in this tier.
+#
+# These specific values (OBV 30/RS 20/MACD 10/Trend 20/Earnings 20) are
+# your explicit call, not a derived or backtested split — still carries
+# the same UNVALIDATED status as everything else in this block until this
+# tier gets its own walk-forward backtest.
+SMALLMICRO_SCORE_WEIGHTS = {
+    "obv_leadership": 30,      # obv_52w_range_pct — your most-trusted signal on NSE500/SP500;
+                               # NOT yet proven on this tier, weighted highest on a hypothesis, not evidence
+    "rs": 20,                  # rs_score vs Nifty 50
+    "macd": 10,                # daily + weekly MACD combined
+    "trend": 20,               # Supertrend + EMA alignment
+    "earnings_acceleration": 20,  # earnings_acceleration_score, rescaled to this tier's 0-100 share
+}
+assert sum(SMALLMICRO_SCORE_WEIGHTS.values()) == 100, "SMALLMICRO_SCORE_WEIGHTS must sum to 100"
+
+# Category thresholds — deliberately different category NAMES from
+# composite_score's (Elite Compounder/Emerging/Exit/Watch), not just
+# different numbers, so a "Strong" here is never mistaken for the
+# backtested "Elite Compounder" category on NSE500/SP500. Same
+# UNVALIDATED-DEFAULT status as the weights above.
+SMALLMICRO_STRONG_THRESHOLD = 70   # >= this -> "Strong"
+SMALLMICRO_WATCH_THRESHOLD = 50    # >= this (and < STRONG) -> "Watch"; below -> "Weak"
+
 INDEX_TICKER_NSE = "^NSEI"   # Nifty 50, used as RS benchmark for NSE names
 INDEX_TICKER_US = "^GSPC"    # S&P 500 index (use "SPY" if you prefer the ETF)
 

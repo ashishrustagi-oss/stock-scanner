@@ -415,7 +415,7 @@ descending. Mixes NSE and US rows deliberately (this is "who's
 accelerating fastest, full stop," not a per-universe comparison like
 Sector Leaders).
 
-## NSE Small/Micro-cap tier — raw, deliberately unscored
+## NSE Small/Micro-cap tier — raw indicators + a separate scoring system
 
 A third, fully separate universe alongside NSE500 and S&P500: **Nifty
 Smallcap 250** (Microcap 250 designed-in but currently disabled — see
@@ -488,23 +488,99 @@ single sector without raising an error. Changed to
 `universe_label.startswith("NSE")` so any current or future NSE-side
 universe label routes correctly.
 
-**What's in the tab:** ticker/name/sector, the full OBV/MACD/Supertrend/EMA/
-RS indicator set (per-ticker, not ranked), 52-week-high and near-breakout
+**What's in the tab:** ticker/name/sector, `smallmicro_score` and its
+supporting columns (see below), the full OBV/MACD/Supertrend/EMA/RS
+indicator set (per-ticker, not ranked), 52-week-high and near-breakout
 proximity, volatility compression (informational — remember the backtest
 found this is NOT a reliable standalone signal even on NSE500/SP500, so
 treat it with at least that much skepticism here, on an unbacktested
 universe), fundamentals + `fundamentally_qualified`, and earnings
-acceleration. No category, no elite_category, no flags that depend on a
+acceleration. No `composite_score`, no `EliteCompounderScore`, no
+`elite_category`, no flags that depend on an NSE500/SP500-specific
 cross-sectional rank.
 
-**Treat everything in this tab as informational only, not yet a trading
-signal.** None of it has been backtested — not the indicators' predictive
-value on this liquidity tier, not the fundamentals coverage rate, nothing.
-Before trusting anything here the way the NSE500/SP500 scores are
-trusted, it needs its own walk-forward backtest run separately (same
-methodology as `backtest.py`, see below) — smallcap/microcap stocks behave
-differently across market cycles than the large/mid-cap names the existing
-backtest evidence actually covers.
+### SmallMicroScore — a separate scoring system, not a reweighted copy
+
+`composite_score` and `EliteCompounderScore` were tuned/backtested
+specifically against NSE500+SP500 liquidity and data-quality patterns —
+running either one unchanged on this thinner, less-liquid, less-covered
+universe would be misleading, not just incomplete. So this tier gets its
+own purpose-built system instead, designed fresh rather than adapted from
+either existing one, for three reasons:
+
+1. **Liquidity is a real risk here that NSE500/SP500 never had to gate
+   for.** A microcap can show a great-looking MACD crossover or OBV slope
+   on a handful of thinly-traded days that mean nothing tradeable. A new
+   `liquidity_qualified` gate runs FIRST, before any score is computed —
+   see `compute_liquidity_gate()` in `scoring.py`. It's based on
+   `avg_daily_traded_value` (price × volume, averaged over
+   `config.LIQUIDITY_LOOKBACK_DAYS`, default 20 trading days), gated
+   against `config.MIN_AVG_DAILY_TRADED_VALUE_INR` (₹50 lakh/day —
+   **no precise, citable "correct" threshold for this exists**; checked
+   before picking a number, this is a deliberately conservative starting
+   default to tune after seeing real output, same status as
+   `MIN_SALES_CAGR`/`MIN_ROCE` elsewhere in `config.py`). A stock that
+   fails the gate gets no score at all, not a penalized one — see
+   `smallmicro_score_basis` below for exactly why any given row is blank.
+2. **No MF/FII shareholding data exists for this tier** (see above) — that
+   weight is redistributed into Earnings Acceleration instead, since it's
+   real, computed, per-ticker, and otherwise unused here.
+3. **Fundamentals coverage will be patchier than even NSE500's "patchy"
+   coverage.** Handled as a separate qualifier, not folded into the 0-100
+   score — a stock scored on technicals alone is always labeled as such,
+   never silently presented the same as one with confirmed fundamentals.
+
+**Components** (`config.SMALLMICRO_SCORE_WEIGHTS` — your explicit weights,
+not a derived/backtested split, same UNVALIDATED status as everything else
+here until this tier gets its own walk-forward backtest):
+
+| Component | Weight | What it reuses |
+|---|---|---|
+| OBV Leadership | 30 | `obv_52w_range_pct` — your most-trusted signal on NSE500/SP500 (it got *more* reliable with more backtest data there); weighted highest here on that hypothesis, with zero evidence yet that it holds on this tier |
+| Relative Strength | 20 | `rs_score` vs Nifty 50, percentile-ranked within this universe only |
+| MACD | 10 | Daily + weekly MACD state, blended 50/50, percentile-ranked |
+| Trend | 20 | Supertrend (daily + weekly) + EMA20 alignment, blended |
+| Earnings Acceleration | 20 | `earnings_acceleration_score`, rescaled from its native 0-20 scale |
+
+**Real bug caught and fixed during testing:** the first version combined
+these five components with a plain weighted sum. A single missing
+component — most commonly Earnings Acceleration, exactly when fundamentals
+data is `"missing"` — would NaN out the *entire* score via standard
+arithmetic, even when the other four components had perfectly good data.
+That silently contradicted the actual design intent (score on technicals
+alone when fundamentals are missing). Fixed: the score is now a weighted
+average across only the components present for that row, **renormalized**
+so the weights of available components sum to 100. Only NaN if literally
+every component is missing. A new `smallmicro_score_coverage_pct` column
+records how much of the 100-point weight was actually available for that
+row (e.g. 80 = only Earnings Acceleration was missing), so "Strong on full
+coverage" is distinguishable from "Strong on partial coverage" without
+inspecting individual columns.
+
+**`smallmicro_score_basis` values** — every blank or scored cell is
+self-explanatory without cross-referencing `config.py`:
+- `technicals_and_fundamentals` — fundamentals were available (ok/partial)
+- `technicals_only` — fundamentals `data_quality` was `"missing"`, but enough else was present to score
+- `not_scored_illiquid` — failed the liquidity gate
+- `not_scored_insufficient_liquidity_data` — too few real trading days to judge liquidity at all
+- `not_scored_no_usable_data` — liquidity-qualified, but every single scoring component was missing (a true data desert)
+
+**Categories** (`smallmicro_category`, thresholds in
+`config.SMALLMICRO_STRONG_THRESHOLD` / `SMALLMICRO_WATCH_THRESHOLD`):
+deliberately different NAMES from `composite_score`'s (`Elite Compounder`/
+`Emerging`/`Exit`/`Watch`), not just different numbers, so a `Strong` here
+is never mistaken for the backtested `Elite Compounder` label on
+NSE500/SP500. `Strong` (≥70) / `Watch` (50-70) / `Weak` (<50) /
+`Insufficient Data` (no score at all).
+
+**Treat `smallmicro_score` as a research starting point, not yet a
+trading signal.** None of this has been backtested — not the weights, not
+the liquidity threshold, not the indicators' predictive value on this
+tier. Before trusting it the way NSE500/SP500's scores are trusted, it
+needs its own walk-forward backtest run separately (same methodology as
+`backtest.py`) — small/microcap stocks behave differently across market
+cycles than the large/mid-cap names the existing backtest evidence
+actually covers.
 
 ## Chart Study Additions — Trend Death + OBV-Price Divergence
 
@@ -672,9 +748,9 @@ signal here with the same skepticism until it's been tested the same way.
 config.py              All tunable parameters
 universe.py             NSE500 / S&P500 / NSE Small+Microcap 250 constituent loading
 data_fetch.py            Batched yfinance price history fetch
-indicators.py             OBV, MACD, Supertrend, EMA, RS, 52w-high distance
+indicators.py             OBV, MACD, Supertrend, EMA, RS, 52w-high distance, liquidity (avg traded value)
 fundamentals.py          CAGR / ROCE / D-E from Yahoo financial statements (cached weekly)
-scoring.py               Cross-sectional percentile scoring + composite + categorization
+scoring.py               Cross-sectional percentile scoring + composite + categorization + SmallMicroScore (separate system, NSE Small/Micro-cap tier only)
 sheets_export.py          Google Sheets writer
 main.py                   Orchestrator — run this
 test_dry_run.py            Mocked end-to-end test, no network needed (dev use only)

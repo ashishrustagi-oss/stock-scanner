@@ -605,3 +605,195 @@ def compute_obv_leadership_rank(df: pd.DataFrame) -> pd.DataFrame:
         lambda r: "🟢" if (not pd.isna(r) and r > config.OBV_LEADERSHIP_RANK_TOP_DECILE_THRESHOLD) else ""
     )
     return df
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# SmallMicroScore — SEPARATE scoring system for the NSE Small/Micro-cap tier
+#
+# This is NOT composite_score or EliteCompounderScore reweighted. Those two
+# were tuned/backtested specifically against NSE500+SP500 liquidity and
+# data-quality patterns (see README "Backtest Framework" — e.g.
+# elite_score_above_65 held at +3.48pp excess across n=532, OBV leadership
+# got MORE trustworthy with more data). None of that evidence exists here.
+# Every weight in config.SMALLMICRO_SCORE_WEIGHTS is a labeled,
+# UNVALIDATED DEFAULT — treat the resulting score as a research starting
+# point, not a trusted signal, until this tier gets its own walk-forward
+# backtest (same methodology as backtest.py).
+#
+# Designed fresh rather than adapted, because three things are genuinely
+# different here:
+#   1. Liquidity is a real risk NSE500/SP500 never had to gate for — a
+#      microcap can show a great technical signal on a few thinly-traded
+#      days that mean nothing tradeable. Computed and gated FIRST, below.
+#   2. No MF/FII shareholding data exists for this tier (see README) — that
+#      weight is redistributed into Earnings Acceleration instead, since
+#      it's real, computed, per-ticker (not a cross-sectional rank, so safe
+#      to use without contamination), and otherwise unused here.
+#   3. Fundamentals coverage will be patchier than even NSE500's "patchy"
+#      coverage — handled as a separate qualifier + clearly labeled basis
+#      string (NOT folded into the 0-100 score itself), so a stock scored
+#      on technicals alone never looks identical to one scored on
+#      technicals + confirmed fundamentals.
+# ════════════════════════════════════════════════════════════════════════════
+
+def compute_liquidity_gate(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Must run BEFORE compute_smallmicro_score. Adds:
+      - liquidity_qualified: True/False/NaN (NaN = not enough trading days
+        to even judge — distinct from False, which means "judged illiquid")
+      - liquidity_basis: short string explaining which case applied, so a
+        blank score in the sheet is self-explanatory without cross-referencing config.py
+    """
+    df = df.copy()
+
+    def _qualify(value):
+        if pd.isna(value):
+            return np.nan
+        return value >= config.MIN_AVG_DAILY_TRADED_VALUE_INR
+
+    df["liquidity_qualified"] = df["avg_daily_traded_value"].apply(_qualify)
+    df["liquidity_basis"] = df["liquidity_qualified"].apply(
+        lambda q: "insufficient_trading_history" if pd.isna(q)
+        else ("liquidity_ok" if q else "below_liquidity_threshold")
+    )
+    return df
+
+
+def compute_smallmicro_score(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Takes the raw per-ticker metrics DataFrame for the NSE Small/Micro-cap
+    universe ONLY (never call this on a combined/mixed-universe dataframe —
+    every percentile rank below is computed cross-sectionally WITHIN
+    whatever df is passed in, exactly like compute_composite() above. If
+    this were ever called on NSE500+SmallMicro combined, the percentiles
+    would be meaningless — that's the contamination this tier was built to
+    avoid in the first place).
+
+    Requires compute_liquidity_gate() to have already run on this df.
+    Stocks where liquidity_qualified is not True get NO score (NaN) —
+    smallmicro_score_basis explains why in every case, so a blank cell in
+    the sheet is never ambiguous.
+
+    Score is a weighted average across whichever of the 5 components have
+    real data for that row, RENORMALIZED so available weights sum to 100 —
+    a missing earnings_acceleration_score (e.g. fundamentals data_quality
+    "missing") does NOT null out the whole score the way a plain weighted
+    sum would; the other 4 components still produce a usable score. Only
+    NaN if literally every component is missing for that row.
+    smallmicro_score_coverage_pct records how much of the 100-point weight
+    was actually available (e.g. 80 = only earnings_acceleration was
+    missing) so "Strong on full coverage" is distinguishable from "Strong
+    on partial coverage" without inspecting individual columns.
+
+    smallmicro_score_basis values:
+      "technicals_only"            — fundamentals data_quality was "missing", but enough else was present to score
+      "technicals_and_fundamentals"— fundamentals were available (ok/partial)
+      "not_scored_illiquid"        — failed the liquidity gate
+      "not_scored_insufficient_liquidity_data" — too few trading days to judge liquidity at all
+      "not_scored_no_usable_data"  — liquidity-qualified, but every scoring component was missing
+    """
+    df = df.copy()
+    w = config.SMALLMICRO_SCORE_WEIGHTS
+
+    # ── Component 1: OBV Leadership (25 pts) — reuses obv_52w_range_pct,
+    # already 0-100 by construction, no re-ranking needed (same as
+    # compute_composite's score_obv 52w-range leg).
+    obv_component = df["obv_52w_range_pct"]
+
+    # ── Component 2: Relative Strength (20 pts) — percentile rank within
+    # THIS dataframe only.
+    rs_component = _pct_rank(df["rs_score"])
+
+    # ── Component 3: MACD, daily + weekly blended 50/50 (20 pts) — reuses
+    # the same _macd_state_score logic as compute_composite, just blended
+    # rather than split into separate daily/weekly buckets (SmallMicroScore
+    # has one combined MACD slot, not two, to make room for Earnings Accel).
+    macd_daily_raw  = _macd_state_score(df["daily_macd"], df["daily_signal"], df["daily_hist"])
+    macd_weekly_raw = _macd_state_score(df["weekly_macd"], df["weekly_signal"], df["weekly_hist"])
+    macd_component = (_pct_rank(macd_daily_raw) + _pct_rank(macd_weekly_raw)) / 2
+
+    # ── Component 4: Trend structure (15 pts) — Supertrend (daily+weekly)
+    # + EMA alignment, binary states exactly like compute_composite's
+    # score_trend (no re-ranking needed, these are already 0/100 by nature).
+    st_daily  = (df["supertrend_10_3_dir"] + 1) / 2 * 100
+    st_weekly = (df["supertrend_weekly_dir"] + 1) / 2 * 100
+    above_ema = (df["close"] > df["ema20"]).astype(float) * 100
+    trend_component = (st_daily + st_weekly + above_ema) / 3
+
+    # ── Component 5: Earnings Acceleration (20 pts) — rescaled from its
+    # native 0-20 scale (see compute_earnings_acceleration_score above) to
+    # this tier's 0-100 share. Requires compute_earnings_acceleration_score
+    # to have already run on this df.
+    if "earnings_acceleration_score" in df.columns:
+        earnings_component = (df["earnings_acceleration_score"] / 20) * 100
+    else:
+        earnings_component = pd.Series(np.nan, index=df.index)
+
+    # Weighted-average across only the components that are actually present
+    # for each row, renormalized so the weights of present components sum
+    # to 100 — NOT a plain weighted sum. A plain sum would propagate a
+    # single missing component (most commonly earnings_acceleration, when
+    # fundamentals/quarterly data is missing — exactly the case this tier
+    # expects to see often) into a NaN for the WHOLE score, even though the
+    # other four components have perfectly good data. That would silently
+    # contradict the "score on technicals alone when fundamentals are
+    # missing" decision this system was built around. Only returns NaN if
+    # every single component is missing for that row.
+    components = pd.DataFrame({
+        "obv_leadership": obv_component,
+        "rs": rs_component,
+        "macd": macd_component,
+        "trend": trend_component,
+        "earnings_acceleration": earnings_component,
+    })
+    weights = pd.Series(w)  # same keys as components' columns, by construction
+
+    present_mask = components.notna()
+    weight_matrix = present_mask.mul(weights, axis=1)         # 0 where missing, real weight where present
+    weight_totals = weight_matrix.sum(axis=1)                  # per-row sum of AVAILABLE weight
+    weighted_values = components.fillna(0).mul(weight_matrix).sum(axis=1)
+
+    raw_score = weighted_values / weight_totals.replace(0, np.nan)  # NaN only if every component missing
+
+    # Liquidity gate — must have already run (compute_liquidity_gate). If it
+    # hasn't, fail loudly rather than silently score everything.
+    if "liquidity_qualified" not in df.columns:
+        raise RuntimeError(
+            "compute_smallmicro_score() called before compute_liquidity_gate() — "
+            "run the liquidity gate first, every score depends on it."
+        )
+
+    df["smallmicro_score"] = raw_score
+    df.loc[df["liquidity_qualified"] != True, "smallmicro_score"] = np.nan  # noqa: E712 (NaN-safe vs True)
+
+    # smallmicro_score_coverage_pct: how much of the 100-point weight was
+    # ACTUALLY available for this row's score, e.g. 80 means earnings
+    # acceleration (20 pts) was the only missing component. Lets you tell
+    # "Strong on full coverage" apart from "Strong, but only 60% of the
+    # formula had data" at a glance, without digging into which specific
+    # column was null.
+    df["smallmicro_score_coverage_pct"] = weight_totals
+    df.loc[df["liquidity_qualified"] != True, "smallmicro_score_coverage_pct"] = np.nan  # noqa: E712
+
+    def _basis(row):
+        if row["liquidity_basis"] == "insufficient_trading_history":
+            return "not_scored_insufficient_liquidity_data"
+        if row["liquidity_basis"] == "below_liquidity_threshold":
+            return "not_scored_illiquid"
+        if pd.isna(row["smallmicro_score"]):
+            return "not_scored_no_usable_data"   # every component was NaN — true data desert
+        # liquidity OK and score exists — basis now depends on fundamentals coverage
+        dq = row.get("data_quality")
+        if dq in ("ok", "partial"):
+            return "technicals_and_fundamentals"
+        return "technicals_only"
+
+    df["smallmicro_score_basis"] = df.apply(_basis, axis=1)
+
+    df["smallmicro_category"] = df["smallmicro_score"].apply(
+        lambda s: "Insufficient Data" if pd.isna(s)
+        else ("Strong" if s >= config.SMALLMICRO_STRONG_THRESHOLD
+              else ("Watch" if s >= config.SMALLMICRO_WATCH_THRESHOLD else "Weak"))
+    )
+
+    return df
