@@ -9,14 +9,6 @@ benchmark ticker can't be resolved or fails to fetch. The fallback is always
 visible downstream via the `source` returned for each sector — never silent.
 
 US sector mapping (GICS Sector -> SPDR ETF) is well-established and reliable.
-<<<<<<< HEAD
-NSE sector mapping (industry label -> NSE sector index) is best-effort; some
-tickers may not resolve via yfinance. Check the `sector_index_source` column
-in the output after the first live run.
-"""
-
-import logging
-=======
 
 NSE sector mapping uses an EXACT (normalized) match against the real 20
 "Sector" labels NSE actually uses across the NSE500 list — confirmed from a
@@ -31,7 +23,6 @@ confirm resolves on Yahoo Finance for them — these fall back to RS vs. Nifty
 
 import logging
 import re
->>>>>>> 03c5cc34f7ef9d7e7eadf5834ebb208ad360f07a
 
 import pandas as pd
 import yfinance as yf
@@ -41,14 +32,6 @@ import config
 logger = logging.getLogger(__name__)
 
 
-<<<<<<< HEAD
-def _match_ticker(sector_label: str, mapping: dict) -> str | None:
-    if not sector_label or pd.isna(sector_label):
-        return None
-    label_lower = str(sector_label).lower()
-    for key, ticker in mapping.items():
-        if key.lower() in label_lower:
-=======
 def _normalize_label(s: str) -> str:
     """Lowercase, strip '&'/'and', remove punctuation, collapse whitespace."""
     s = str(s).lower()
@@ -76,7 +59,6 @@ def _match_ticker(sector_label: str, mapping: dict) -> str | None:
     # Safety-net substring fallback for unexpected label variants
     for key, ticker in mapping.items():
         if _normalize_label(key) in normalized:
->>>>>>> 03c5cc34f7ef9d7e7eadf5834ebb208ad360f07a
             return ticker
     return None
 

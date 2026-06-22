@@ -27,10 +27,7 @@ import metrics_builder
 import portfolio
 import scoring as sc
 import sector_data
-<<<<<<< HEAD
-=======
 import shareholding
->>>>>>> 03c5cc34f7ef9d7e7eadf5834ebb208ad360f07a
 import sheets_export
 import universe
 
@@ -42,106 +39,6 @@ logging.basicConfig(
 logger = logging.getLogger("main")
 
 
-<<<<<<< HEAD
-def _bool_flag(value, threshold, le=True):
-    """NaN-safe boolean-as-float (1.0/0.0/nan) threshold check."""
-    if value is None or (isinstance(value, float) and np.isnan(value)):
-        return np.nan
-    return 1.0 if (value <= threshold if le else value >= threshold) else 0.0
-
-
-def build_metrics_row(
-    yf_ticker: str, df: pd.DataFrame, index_close: pd.Series,
-    sector_close: pd.Series, sector_source: str,
-) -> dict:
-    """Computes every technical indicator for one ticker and returns a flat dict."""
-    close = df["Close"]
-
-    obv_series = ind.obv(df)
-    weekly = ind.resample_weekly(df)
-
-    daily_macd, daily_signal, daily_hist = ind.macd(close)
-    weekly_macd_s, weekly_signal_s, weekly_hist_s = ind.macd(weekly["Close"])
-
-    weekly_hist_val = float(weekly_hist_s.iloc[-1]) if len(weekly_hist_s) else np.nan
-
-    st_slow_line, st_slow_dir   = ind.supertrend(df, **config.SUPERTREND_SLOW)
-    st_fast_line, st_fast_dir   = ind.supertrend(df, **config.SUPERTREND_FAST)
-    st_weekly_line, st_weekly_dir = ind.weekly_supertrend(df, **config.SUPERTREND_WEEKLY)
-
-    ema10 = ind.ema(close, config.EMA10_PERIOD)
-    ema20 = ind.ema(close, config.EMA_PERIOD)
-
-    # ── Elite Compounder Early Detection modules ──
-    rs_nifty_series = ind.rs_ratio_series(close, index_close)
-    rs_sector_series = ind.rs_ratio_series(close, sector_close)
-
-    atr_comp_ratio = ind.atr_compression_ratio(df, config.ATR_PERIOD, config.VOLATILITY_COMPRESSION_LOOKBACK_DAYS)
-    atr_comp_pctile = ind.atr_compression_percentile(df, config.ATR_PERIOD, config.VOLATILITY_COMPRESSION_LOOKBACK_DAYS)
-
-    row = {
-        "yf_ticker":              yf_ticker,
-        "close":                  float(close.iloc[-1]),
-        # ── OBV (original) ──
-        "obv":                    float(obv_series.iloc[-1]),
-        "obv_slope_20d":          ind.obv_slope(obv_series, config.OBV_SLOPE_SHORT_WINDOW),
-        "obv_slope_50d":          ind.obv_slope(obv_series, config.OBV_SLOPE_LONG_WINDOW),
-        "obv_52w_range_pct":      ind.obv_52w_range_pct(obv_series),
-        # ── OBV Leadership module (NEW) ──
-        "obv_52w_high":           ind.is_at_nbar_high(obv_series, config.WEEKS_52_IN_DAYS),
-        "obv_26w_high":           ind.is_at_nbar_high(obv_series, config.WEEKS_26_IN_DAYS),
-        "obv_slope_13w":          ind.obv_slope(obv_series, config.WEEKS_13_IN_DAYS),
-        "obv_slope_26w":          ind.obv_slope(obv_series, config.WEEKS_26_IN_DAYS),
-        # ── Daily MACD (original) ──
-        "daily_macd":             float(daily_macd.iloc[-1]),
-        "daily_signal":           float(daily_signal.iloc[-1]),
-        "daily_hist":             float(daily_hist.iloc[-1]),
-        # ── Early MACD module (NEW) ──
-        "macd_early_bullish":     ind.macd_early_bullish(daily_macd, daily_signal, config.MACD_EARLY_LOOKBACK_DAYS),
-        # ── Weekly MACD (original) ──
-        "weekly_macd":            float(weekly_macd_s.iloc[-1]) if len(weekly_macd_s) else np.nan,
-        "weekly_signal":          float(weekly_signal_s.iloc[-1]) if len(weekly_signal_s) else np.nan,
-        "weekly_hist":            weekly_hist_val,
-        "weekly_macd_positive":   ind.weekly_macd_positive(weekly_hist_val),
-        # ── Daily Supertrend (original) ──
-        "supertrend_10_3_value":  float(st_slow_line.iloc[-1]),
-        "supertrend_10_3_dir":    float(st_slow_dir.iloc[-1]),
-        "supertrend_2_1_value":   float(st_fast_line.iloc[-1]),
-        "supertrend_2_1_dir":     float(st_fast_dir.iloc[-1]),
-        # ── Weekly Supertrend (original) ──
-        "supertrend_weekly_dir":  float(st_weekly_dir.iloc[-1]) if len(st_weekly_dir) else np.nan,
-        "supertrend_weekly_value":float(st_weekly_line.iloc[-1]) if len(st_weekly_line) else np.nan,
-        # ── EMA (original EMA20 + NEW EMA10 / early alignment) ──
-        "ema10":                  float(ema10.iloc[-1]),
-        "ema20":                  float(ema20.iloc[-1]),
-        "early_ema_alignment":    ind.early_ema_alignment(ema10, ema20, config.EMA20_SLOPE_WINDOW),
-        # ── Relative Strength — original blended-outperformance metric ──
-        "rs_score":               ind.relative_strength_score(close, index_close),
-        # ── RS Leadership module (NEW) — vs Nifty/SPX and vs Sector ──
-        "rs_nifty_52w_high":      ind.is_at_nbar_high(rs_nifty_series, config.WEEKS_52_IN_DAYS),
-        "rs_nifty_chg_13w":       ind.rs_pct_change(rs_nifty_series, config.WEEKS_13_IN_DAYS),
-        "rs_nifty_chg_26w":       ind.rs_pct_change(rs_nifty_series, config.WEEKS_26_IN_DAYS),
-        "rs_sector_52w_high":     ind.is_at_nbar_high(rs_sector_series, config.WEEKS_52_IN_DAYS),
-        "rs_sector_chg_13w":      ind.rs_pct_change(rs_sector_series, config.WEEKS_13_IN_DAYS),
-        "rs_sector_chg_26w":      ind.rs_pct_change(rs_sector_series, config.WEEKS_26_IN_DAYS),
-        "sector_index_source":    sector_source,
-        # ── 52-week high metrics (original + NEW near-breakout at 15%) ──
-        "pct_from_52w_high":      ind.pct_from_52w_high(close),
-        "near_52w_high":          ind.near_52w_high(close, config.NEAR_52W_HIGH_THRESHOLD_PCT),
-        "near_breakout_15pct":    ind.near_52w_high(close, config.NEAR_BREAKOUT_THRESHOLD_PCT),
-        # ── Volatility Compression module (NEW) ──
-        "atr_compression_ratio":      atr_comp_ratio,
-        "atr_compression_percentile": atr_comp_pctile,
-        "range_compression_ratio":    ind.range_compression_ratio(df),
-        "volatility_compression":     _bool_flag(
-            atr_comp_pctile, config.VOLATILITY_COMPRESSION_PERCENTILE_THRESHOLD, le=True
-        ),
-    }
-    return row
-
-
-=======
->>>>>>> 03c5cc34f7ef9d7e7eadf5834ebb208ad360f07a
 def process_universe(label: str, universe_df: pd.DataFrame, index_ticker: str) -> pd.DataFrame:
     logger.info("=== Processing %s universe (%d tickers) ===", label, len(universe_df))
 
@@ -161,11 +58,7 @@ def process_universe(label: str, universe_df: pd.DataFrame, index_ticker: str) -
         try:
             sector_label = ticker_sector_map.get(yf_ticker)
             sector_close, sector_source = sector_close_map.get(sector_label, (index_close, "NO_SECTOR_LABEL"))
-<<<<<<< HEAD
-            rows.append(build_metrics_row(yf_ticker, df, index_close, sector_close, sector_source))
-=======
             rows.append(metrics_builder.build_metrics_row(yf_ticker, df, index_close, sector_close, sector_source))
->>>>>>> 03c5cc34f7ef9d7e7eadf5834ebb208ad360f07a
         except Exception as exc:  # noqa: BLE001
             logger.warning("Indicator computation failed for %s: %s", yf_ticker, exc)
 
@@ -192,8 +85,6 @@ def process_universe(label: str, universe_df: pd.DataFrame, index_ticker: str) -
     # Elite Compounder Early Detection scoring — additive, runs after the above
     metrics_df = sc.compute_elite_compounder_score(metrics_df)
 
-<<<<<<< HEAD
-=======
     # Single, clearly-labeled RS column: each stock vs ITS OWN home broad
     # index only (Nifty 50 for NSE, S&P 500 for US) — distinct from the
     # sector-specific RS fields above. This is the same underlying
@@ -251,7 +142,6 @@ def process_universe(label: str, universe_df: pd.DataFrame, index_ticker: str) -
     # (yfinance quarterly statements are available for both, unlike MF/FII).
     metrics_df = sc.compute_earnings_acceleration_score(metrics_df)
 
->>>>>>> 03c5cc34f7ef9d7e7eadf5834ebb208ad360f07a
     metrics_df["universe"] = label
     metrics_df = metrics_df.sort_values("composite_score", ascending=False).reset_index(drop=True)
 
@@ -268,10 +158,6 @@ DISPLAY_COLUMNS = [
     "composite_score", "category", "fundamentally_qualified",
     # ── Elite Compounder Early Detection — headline fields ──
     "EliteCompounderScore", "elite_category",
-<<<<<<< HEAD
-    "flag_obv_leader", "flag_rs_leader", "flag_early_macd",
-    "flag_compression", "flag_ema_alignment", "flag_near_breakout",
-=======
     "RS_vs_Broad_Index_pct",   # single clear RS-vs-home-index column
     "flag_obv_leader", "flag_rs_leader", "flag_early_macd",
     "flag_compression", "flag_ema_alignment", "flag_near_breakout",
@@ -279,7 +165,6 @@ DISPLAY_COLUMNS = [
     "flag_rs_top_decile", "flag_trend_birth", "flag_monthly_bullish", "flag_sector_leader",
     "flag_trend_death", "flag_bullish_obv_divergence",
     "flag_institutional_accumulation", "flag_earnings_accelerating",
->>>>>>> 03c5cc34f7ef9d7e7eadf5834ebb208ad360f07a
     # Original sub-scores
     "score_obv", "score_macd_weekly", "score_macd_daily", "score_trend", "score_rs",
     # Elite Compounder sub-scores
@@ -383,8 +268,6 @@ def main():
     else:
         elite_early_detect = category_a = category_b = category_c = pd.DataFrame()
 
-<<<<<<< HEAD
-=======
     # ── Phase 1 (Elite Compounder Discovery v2.0) dashboards ──
     if not combined.empty:
         trend_birth_tab = view(
@@ -404,7 +287,6 @@ def main():
     else:
         trend_birth_tab = sector_leaders_tab = trend_death_tab = pd.DataFrame()
 
->>>>>>> 03c5cc34f7ef9d7e7eadf5834ebb208ad360f07a
     run_log = pd.DataFrame([{
         "run_timestamp_utc": run_started.isoformat(),
         "nse_tickers_scored": len(nse_df),
@@ -419,13 +301,10 @@ def main():
         "category_a_count": len(category_a),
         "category_b_count": len(category_b),
         "category_c_count": len(category_c),
-<<<<<<< HEAD
-=======
         # Phase 1 counts
         "trend_birth_count": len(trend_birth_tab),
         "sector_leaders_count": len(sector_leaders_tab),
         "trend_death_count": len(trend_death_tab),
->>>>>>> 03c5cc34f7ef9d7e7eadf5834ebb208ad360f07a
     }])
 
     # ── My Portfolio (manually-imported Zerodha holdings) — additive, never
@@ -452,13 +331,10 @@ def main():
         config.SHEET_TABS["category_a"]: category_a,
         config.SHEET_TABS["category_b"]: category_b,
         config.SHEET_TABS["category_c"]: category_c,
-<<<<<<< HEAD
-=======
         # Phase 1 (Elite Compounder Discovery v2.0) dashboards
         config.SHEET_TABS["trend_birth"]: trend_birth_tab,
         config.SHEET_TABS["sector_leaders"]: sector_leaders_tab,
         config.SHEET_TABS["trend_death"]: trend_death_tab,
->>>>>>> 03c5cc34f7ef9d7e7eadf5834ebb208ad360f07a
     }
 
     # Only add the portfolio tab if there was something to show — avoids

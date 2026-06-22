@@ -304,8 +304,6 @@ def macd_early_bullish(macd_line: pd.Series, signal_line: pd.Series, lookback_da
     return 1.0 if (now_bullish and crossed_recently and still_below_zero) else 0.0
 
 
-<<<<<<< HEAD
-=======
 def macd_early_bearish(macd_line: pd.Series, signal_line: pd.Series, lookback_days: int = 3) -> float:
     """
     Mirror image of macd_early_bullish, for the Trend Death / Distribution
@@ -359,7 +357,6 @@ def obv_price_divergence(close: pd.Series, obv_series: pd.Series, window: int = 
     return float(obv_decline_pct - price_decline_pct)
 
 
->>>>>>> 03c5cc34f7ef9d7e7eadf5834ebb208ad360f07a
 # ----------------------------------------------------------------------------
 # Volatility compression (ATR ratio + range compression)
 # ----------------------------------------------------------------------------

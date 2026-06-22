@@ -293,8 +293,6 @@ def categorize_elite(score: float) -> str:
     if config.ELITE_CATEGORY_C_LOW <= score < config.ELITE_CATEGORY_C_HIGH:
         return "Category C: Watchlist"
     return "Below Watchlist"
-<<<<<<< HEAD
-=======
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -580,4 +578,3 @@ def compute_obv_divergence_flag(df: pd.DataFrame) -> pd.DataFrame:
 
     df["flag_bullish_obv_divergence"] = df.apply(_flag, axis=1)
     return df
->>>>>>> 03c5cc34f7ef9d7e7eadf5834ebb208ad360f07a

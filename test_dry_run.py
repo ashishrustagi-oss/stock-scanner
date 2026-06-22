@@ -10,10 +10,7 @@ import config
 import data_fetch
 import fundamentals as fnd
 import sector_data
-<<<<<<< HEAD
-=======
 import shareholding
->>>>>>> 03c5cc34f7ef9d7e7eadf5834ebb208ad360f07a
 import sheets_export
 import universe
 
@@ -145,10 +142,7 @@ data_fetch.fetch_price_history = fake_fetch_price_history
 data_fetch.fetch_index_history = fake_fetch_index_history
 fnd.get_fundamentals = fake_get_fundamentals
 sector_data.get_sector_close_map = fake_get_sector_close_map
-<<<<<<< HEAD
-=======
 shareholding.get_shareholding_trends = fake_get_shareholding_trends
->>>>>>> 03c5cc34f7ef9d7e7eadf5834ebb208ad360f07a
 sheets_export.export_to_sheets = fake_export_to_sheets
 universe.get_nse500_universe = fake_nse_universe
 universe.get_sp500_universe = fake_sp500_universe
