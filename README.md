@@ -509,8 +509,8 @@ own purpose-built system instead, designed fresh rather than adapted from
 either existing one, for three reasons:
 
 1. **Liquidity is a real risk here that NSE500/SP500 never had to gate
-   for.** A microcap can show a great-looking MACD crossover or OBV slope
-   on a handful of thinly-traded days that mean nothing tradeable. A new
+   for.** A microcap can show a great-looking technical signal on a
+   handful of thinly-traded days that mean nothing tradeable. A new
    `liquidity_qualified` gate runs FIRST, before any score is computed —
    see `compute_liquidity_gate()` in `scoring.py`. It's based on
    `avg_daily_traded_value` (price × volume, averaged over
@@ -522,9 +522,12 @@ either existing one, for three reasons:
    `MIN_SALES_CAGR`/`MIN_ROCE` elsewhere in `config.py`). A stock that
    fails the gate gets no score at all, not a penalized one — see
    `smallmicro_score_basis` below for exactly why any given row is blank.
+   This is deliberately a MINIMAL floor, separate from and much lower than
+   the strict checklist's own ₹2 crore/day bar below — a stock between the
+   two still gets a full score, it just won't pass the strict checklist.
 2. **No MF/FII shareholding data exists for this tier** (see above) — that
-   weight is redistributed into Earnings Acceleration instead, since it's
-   real, computed, per-ticker, and otherwise unused here.
+   weight is folded into Earnings Acceleration and Liquidity instead,
+   since both are real, computed, and otherwise unused here.
 3. **Fundamentals coverage will be patchier than even NSE500's "patchy"
    coverage.** Handled as a separate qualifier, not folded into the 0-100
    score — a stock scored on technicals alone is always labeled as such,
@@ -532,30 +535,34 @@ either existing one, for three reasons:
 
 **Components** (`config.SMALLMICRO_SCORE_WEIGHTS` — your explicit weights,
 not a derived/backtested split, same UNVALIDATED status as everything else
-here until this tier gets its own walk-forward backtest):
+here until this tier gets its own walk-forward backtest. **2nd revision**,
+based on your own post-analysis read of the first version: MACD and Trend
+dropped entirely, OBV and RS pushed higher, Near-52-Week-High promoted
+from a binary flag to its own weighted component, Liquidity promoted from
+gate-only to also being scored):
 
 | Component | Weight | What it reuses |
 |---|---|---|
-| OBV Leadership | 30 | `obv_52w_range_pct` — your most-trusted signal on NSE500/SP500 (it got *more* reliable with more backtest data there); weighted highest here on that hypothesis, with zero evidence yet that it holds on this tier |
-| Relative Strength | 20 | `rs_score` vs Nifty 50, percentile-ranked within this universe only |
-| MACD | 10 | Daily + weekly MACD state, blended 50/50, percentile-ranked |
-| Trend | 20 | Supertrend (daily + weekly) + EMA20 alignment, blended |
-| Earnings Acceleration | 20 | `earnings_acceleration_score`, rescaled from its native 0-20 scale |
+| OBV Leadership | 40 | `obv_52w_range_pct` — your most-trusted signal on NSE500/SP500 (it got *more* reliable with more backtest data there); weighted highest here on that hypothesis, with zero evidence yet that it holds on this tier |
+| Relative Strength | 25 | `rs_score` vs Nifty 50, percentile-ranked within this universe only |
+| Near 52-Week High | 15 | `pct_from_52w_high`, inverted (closer to the high scores higher) and percentile-ranked within this universe |
+| Earnings Acceleration | 10 | `earnings_acceleration_score`, rescaled from its native 0-20 scale |
+| Liquidity | 10 | `avg_daily_traded_value`, percentile-ranked within this universe — a graded reward for being MORE liquid than peers, distinct from the pass/fail `liquidity_qualified` gate above |
 
-**Real bug caught and fixed during testing:** the first version combined
-these five components with a plain weighted sum. A single missing
-component — most commonly Earnings Acceleration, exactly when fundamentals
-data is `"missing"` — would NaN out the *entire* score via standard
-arithmetic, even when the other four components had perfectly good data.
-That silently contradicted the actual design intent (score on technicals
-alone when fundamentals are missing). Fixed: the score is now a weighted
-average across only the components present for that row, **renormalized**
-so the weights of available components sum to 100. Only NaN if literally
-every component is missing. A new `smallmicro_score_coverage_pct` column
-records how much of the 100-point weight was actually available for that
-row (e.g. 80 = only Earnings Acceleration was missing), so "Strong on full
-coverage" is distinguishable from "Strong on partial coverage" without
-inspecting individual columns.
+**Real bug caught and fixed during testing (still applies to this
+revision):** the first version combined components with a plain weighted
+sum. A single missing component — most commonly Earnings Acceleration,
+exactly when fundamentals data is `"missing"` — would NaN out the *entire*
+score via standard arithmetic, even when the other components had
+perfectly good data. That silently contradicted the actual design intent
+(score on technicals alone when fundamentals are missing). Fixed: the
+score is a weighted average across only the components present for that
+row, **renormalized** so the weights of available components sum to 100.
+Only NaN if literally every component is missing. A
+`smallmicro_score_coverage_pct` column records how much of the 100-point
+weight was actually available for that row (e.g. 90 = only Earnings
+Acceleration was missing), so "Strong on full coverage" is distinguishable
+from "Strong on partial coverage" without inspecting individual columns.
 
 **`smallmicro_score_basis` values** — every blank or scored cell is
 self-explanatory without cross-referencing `config.py`:
@@ -572,6 +579,33 @@ deliberately different NAMES from `composite_score`'s (`Elite Compounder`/
 is never mistaken for the backtested `Elite Compounder` label on
 NSE500/SP500. `Strong` (≥70) / `Watch` (50-70) / `Weak` (<50) /
 `Insufficient Data` (no score at all).
+
+### Strict checklist — a separate pass/fail flag, not a pre-filter
+
+`smallmicro_strict_pass` (`compute_smallmicro_strict_checklist()` in
+`scoring.py`) is a SEPARATE four-condition checklist, deliberately NOT a
+pre-filter on `smallmicro_score` — every liquidity-qualified stock still
+gets a full score regardless of whether it passes this. The point is to
+see both "how strong is this on balance" and "does it clear my strict
+bar" independently, rather than losing visibility into near-misses.
+
+All four must be `True`:
+1. OBV percentile (`obv_52w_range_pct`) in the top decile (≥90th, `config.SMALLMICRO_STRICT_TOP_DECILE_THRESHOLD`)
+2. RS percentile (`rs_score`, ranked within this universe) in the top decile (≥90th, same threshold)
+3. `near_breakout_15pct` is `True` — within 15% of the 52-week high (reuses the existing column, same 15% threshold already used elsewhere)
+4. `avg_daily_traded_value` ≥ `config.SMALLMICRO_STRICT_MIN_TURNOVER_INR` (₹2 crore/day — deliberately much stricter than the ₹50 lakh/day scoring-eligibility floor above; a stock can clear that floor, get scored, and still fail this)
+
+Any missing input fails that specific condition (never passes on
+"unknown" — a strict "must be true" checklist can't be satisfied by data
+you don't have). `smallmicro_strict_fail_reasons` lists exactly which
+condition(s) failed, comma-joined, blank when `smallmicro_strict_pass` is
+`True` — so a near-miss (e.g. a high-scoring stock that just barely misses
+the OBV top-decile bar) is immediately diagnosable straight from the
+sheet, without digging into the underlying percentiles yourself. Given how
+tight a 90th-percentile bar is on two independent dimensions at once,
+expect this checklist to pass only a small handful of names even when the
+overall score looks healthy across the board — that's the design working
+as intended, not a bug.
 
 **Treat `smallmicro_score` as a research starting point, not yet a
 trading signal.** None of this has been backtested — not the weights, not

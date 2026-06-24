@@ -108,14 +108,16 @@ def process_universe(label: str, universe_df: pd.DataFrame, index_ticker: str, s
         metrics_df = sc.compute_earnings_acceleration_score(metrics_df)  # per-ticker, not a rank — safe to reuse as-is
         metrics_df = sc.compute_liquidity_gate(metrics_df)               # must run before compute_smallmicro_score
         metrics_df = sc.compute_smallmicro_score(metrics_df)              # SEPARATE system, NOT composite_score reweighted
+        metrics_df = sc.compute_smallmicro_strict_checklist(metrics_df)   # SEPARATE pass/fail flag, not a pre-filter on the score above
         metrics_df["universe"] = label
         metrics_df = metrics_df.sort_values("smallmicro_score", ascending=False, na_position="last").reset_index(drop=True)
         logger.info(
             "%s done (separate SmallMicroScore, not NSE500/SP500's backtested system): "
-            "%d total, %d liquidity-qualified, %d scored 'Strong'",
+            "%d total, %d liquidity-qualified, %d scored 'Strong', %d pass the strict checklist",
             label, len(metrics_df),
             int((metrics_df["liquidity_qualified"] == True).sum()),  # noqa: E712
             int((metrics_df["smallmicro_category"] == "Strong").sum()),
+            int((metrics_df["smallmicro_strict_pass"] == True).sum()),  # noqa: E712
         )
         return metrics_df
 
@@ -279,21 +281,33 @@ RAW_DISPLAY_COLUMNS = [
     "ticker", "name", "sector", "universe", "close",
     # SmallMicroScore — leads the column list since it's the main thing to
     # look at; smallmicro_score_basis explains every NaN/category at a
-    # glance without cross-referencing config.py or scoring.py.
+    # glance without cross-referencing config.py or scoring.py. Built from
+    # OBV Leadership 40 / RS 25 / Near-52w-High 15 / Earnings Accel 10 /
+    # Liquidity 10 — see config.SMALLMICRO_SCORE_WEIGHTS.
     "smallmicro_score", "smallmicro_category", "smallmicro_score_basis", "smallmicro_score_coverage_pct",
+    # Strict pass/fail checklist — a SEPARATE flag from the score above,
+    # NOT a pre-filter on it. smallmicro_strict_fail_reasons makes a
+    # near-miss immediately diagnosable without cross-referencing config.py.
+    "smallmicro_strict_pass", "smallmicro_strict_fail_reasons",
     "liquidity_qualified", "avg_daily_traded_value",
     "RS_vs_Broad_Index_pct", "rs_score",
-    # OBV
+    # OBV — obv_52w_range_pct feeds the score directly (40 pts); the rest
+    # are shown for context only.
     "obv_slope_20d", "obv_slope_50d", "obv_52w_range_pct",
     "obv_52w_high", "obv_26w_high", "obv_price_divergence",
-    # MACD (daily/weekly/monthly)
+    # 52w-high / breakout proximity — pct_from_52w_high feeds the score
+    # (15 pts, inverted+ranked); near_breakout_15pct feeds the strict
+    # checklist directly; near_52w_high (10% threshold) shown for context only.
+    "pct_from_52w_high", "near_breakout_15pct", "near_52w_high",
+    # MACD and Trend structure — NO LONGER feed smallmicro_score (dropped
+    # in the 2nd revision in favor of weighting OBV/RS higher and adding
+    # Near-52w-High/Liquidity as scored components). Kept in the tab purely
+    # as supporting context for your own manual read of a stock, same as
+    # any other indicator column here.
     "daily_macd", "daily_signal", "daily_hist", "macd_early_bullish", "macd_early_bearish",
     "weekly_macd", "weekly_signal", "weekly_hist", "weekly_macd_positive",
     "monthly_macd", "monthly_signal", "monthly_hist", "monthly_bullish",
-    # Supertrend / EMA / trend structure
     "supertrend_10_3_dir", "supertrend_weekly_dir", "ema10", "ema20", "early_ema_alignment",
-    # 52w-high / breakout proximity
-    "pct_from_52w_high", "near_52w_high", "near_breakout_15pct",
     # Volatility compression (informational only — backtest showed this is
     # NOT a reliable standalone signal even on NSE500/SP500; doubly so on a
     # thinner, less-liquid universe that's never been backtested at all)
@@ -301,7 +315,8 @@ RAW_DISPLAY_COLUMNS = [
     # Fundamentals
     "sales_cagr", "profit_cagr", "roce", "debt_equity", "fundamentally_qualified", "data_quality",
     # Earnings acceleration (per-ticker, not a cross-sectional rank — safe to
-    # carry over as-is; same QoQ seasonality caveat applies, see README)
+    # carry over as-is; same QoQ seasonality caveat applies, see README).
+    # earnings_acceleration_score feeds the score directly (10 pts).
     "eps_acceleration", "revenue_acceleration", "earnings_acceleration_score",
     "flag_earnings_accelerating", "earnings_data_quality",
 ]

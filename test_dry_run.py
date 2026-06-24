@@ -211,5 +211,17 @@ print(smc["smallmicro_score_basis"].value_counts())
 assert smc["smallmicro_score"].dropna().between(0, 100).all(), "smallmicro_score out of 0-100 range!"
 print("\nConfirmed: all non-NaN smallmicro_score values are within 0-100.")
 
+print("\n=== Strict checklist detail ===")
+print(smc[["ticker", "smallmicro_score", "smallmicro_strict_pass", "smallmicro_strict_fail_reasons"]].to_string())
+print("\nStrict pass count:", int((smc["smallmicro_strict_pass"] == True).sum()))  # noqa: E712
+# A failing row must always have a non-empty reasons string, and a passing
+# row must always have an empty one — if either breaks, the two columns
+# have gone out of sync with each other.
+mismatched = smc[(smc["smallmicro_strict_pass"]) & (smc["smallmicro_strict_fail_reasons"] != "")]
+assert mismatched.empty, f"Rows marked pass=True but have fail reasons: {mismatched['ticker'].tolist()}"
+mismatched2 = smc[(~smc["smallmicro_strict_pass"]) & (smc["smallmicro_strict_fail_reasons"] == "")]
+assert mismatched2.empty, f"Rows marked pass=False but have NO fail reasons: {mismatched2['ticker'].tolist()}"
+print("Confirmed: smallmicro_strict_pass and smallmicro_strict_fail_reasons are consistent for every row.")
+
 print("\nDRY RUN PASSED - no exceptions")
 

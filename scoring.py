@@ -672,16 +672,26 @@ def compute_smallmicro_score(df: pd.DataFrame) -> pd.DataFrame:
     Requires compute_liquidity_gate() to have already run on this df.
     Stocks where liquidity_qualified is not True get NO score (NaN) —
     smallmicro_score_basis explains why in every case, so a blank cell in
-    the sheet is never ambiguous.
+    the sheet is never ambiguous. This is the MINIMAL scoring-eligibility
+    floor (config.MIN_AVG_DAILY_TRADED_VALUE_INR, ₹50L/day) — deliberately
+    separate from and lower than the much stricter ₹2cr/day bar used in
+    compute_smallmicro_strict_checklist() below. A stock can clear this
+    floor, get a full score (including a liquidity component reflecting
+    it's on the lower side), and still fail the strict checklist.
+
+    2nd revision (your own post-analysis call): OBV and RS dominate (40+25
+    = 65 of the 100 points), MACD and Trend dropped entirely, Near-52-Week-
+    High promoted from a binary flag to its own weighted component,
+    Liquidity promoted from gate-only to also being a scored component.
 
     Score is a weighted average across whichever of the 5 components have
     real data for that row, RENORMALIZED so available weights sum to 100 —
     a missing earnings_acceleration_score (e.g. fundamentals data_quality
     "missing") does NOT null out the whole score the way a plain weighted
-    sum would; the other 4 components still produce a usable score. Only
+    sum would; the other components still produce a usable score. Only
     NaN if literally every component is missing for that row.
     smallmicro_score_coverage_pct records how much of the 100-point weight
-    was actually available (e.g. 80 = only earnings_acceleration was
+    was actually available (e.g. 90 = only earnings_acceleration was
     missing) so "Strong on full coverage" is distinguishable from "Strong
     on partial coverage" without inspecting individual columns.
 
@@ -695,32 +705,23 @@ def compute_smallmicro_score(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     w = config.SMALLMICRO_SCORE_WEIGHTS
 
-    # ── Component 1: OBV Leadership (25 pts) — reuses obv_52w_range_pct,
+    # ── Component 1: OBV Leadership (40 pts) — reuses obv_52w_range_pct,
     # already 0-100 by construction, no re-ranking needed (same as
     # compute_composite's score_obv 52w-range leg).
     obv_component = df["obv_52w_range_pct"]
 
-    # ── Component 2: Relative Strength (20 pts) — percentile rank within
+    # ── Component 2: Relative Strength (25 pts) — percentile rank within
     # THIS dataframe only.
     rs_component = _pct_rank(df["rs_score"])
 
-    # ── Component 3: MACD, daily + weekly blended 50/50 (20 pts) — reuses
-    # the same _macd_state_score logic as compute_composite, just blended
-    # rather than split into separate daily/weekly buckets (SmallMicroScore
-    # has one combined MACD slot, not two, to make room for Earnings Accel).
-    macd_daily_raw  = _macd_state_score(df["daily_macd"], df["daily_signal"], df["daily_hist"])
-    macd_weekly_raw = _macd_state_score(df["weekly_macd"], df["weekly_signal"], df["weekly_hist"])
-    macd_component = (_pct_rank(macd_daily_raw) + _pct_rank(macd_weekly_raw)) / 2
+    # ── Component 3: Near 52-Week High (15 pts) — pct_from_52w_high is
+    # DISTANCE below the high (0 = at the high, larger = further below),
+    # so it's inverted before ranking: closer to the high should score
+    # higher, not lower. Percentile-ranked within this universe, same
+    # pattern as every other ranked component here.
+    near_high_component = _pct_rank(-df["pct_from_52w_high"])
 
-    # ── Component 4: Trend structure (15 pts) — Supertrend (daily+weekly)
-    # + EMA alignment, binary states exactly like compute_composite's
-    # score_trend (no re-ranking needed, these are already 0/100 by nature).
-    st_daily  = (df["supertrend_10_3_dir"] + 1) / 2 * 100
-    st_weekly = (df["supertrend_weekly_dir"] + 1) / 2 * 100
-    above_ema = (df["close"] > df["ema20"]).astype(float) * 100
-    trend_component = (st_daily + st_weekly + above_ema) / 3
-
-    # ── Component 5: Earnings Acceleration (20 pts) — rescaled from its
+    # ── Component 4: Earnings Acceleration (10 pts) — rescaled from its
     # native 0-20 scale (see compute_earnings_acceleration_score above) to
     # this tier's 0-100 share. Requires compute_earnings_acceleration_score
     # to have already run on this df.
@@ -729,22 +730,30 @@ def compute_smallmicro_score(df: pd.DataFrame) -> pd.DataFrame:
     else:
         earnings_component = pd.Series(np.nan, index=df.index)
 
+    # ── Component 5: Liquidity (10 pts) — avg_daily_traded_value,
+    # percentile-ranked within this universe. Distinct from
+    # liquidity_qualified (the pass/fail scoring-eligibility floor below):
+    # this is a graded score, so a stock comfortably above the floor still
+    # gets rewarded for being MORE liquid than its peers, not just for
+    # clearing a bar.
+    liquidity_component = _pct_rank(df["avg_daily_traded_value"])
+
     # Weighted-average across only the components that are actually present
     # for each row, renormalized so the weights of present components sum
     # to 100 — NOT a plain weighted sum. A plain sum would propagate a
     # single missing component (most commonly earnings_acceleration, when
     # fundamentals/quarterly data is missing — exactly the case this tier
     # expects to see often) into a NaN for the WHOLE score, even though the
-    # other four components have perfectly good data. That would silently
+    # other components have perfectly good data. That would silently
     # contradict the "score on technicals alone when fundamentals are
     # missing" decision this system was built around. Only returns NaN if
     # every single component is missing for that row.
     components = pd.DataFrame({
         "obv_leadership": obv_component,
         "rs": rs_component,
-        "macd": macd_component,
-        "trend": trend_component,
+        "near_52w_high": near_high_component,
         "earnings_acceleration": earnings_component,
+        "liquidity": liquidity_component,
     })
     weights = pd.Series(w)  # same keys as components' columns, by construction
 
@@ -767,8 +776,8 @@ def compute_smallmicro_score(df: pd.DataFrame) -> pd.DataFrame:
     df.loc[df["liquidity_qualified"] != True, "smallmicro_score"] = np.nan  # noqa: E712 (NaN-safe vs True)
 
     # smallmicro_score_coverage_pct: how much of the 100-point weight was
-    # ACTUALLY available for this row's score, e.g. 80 means earnings
-    # acceleration (20 pts) was the only missing component. Lets you tell
+    # ACTUALLY available for this row's score, e.g. 90 means earnings
+    # acceleration (10 pts) was the only missing component. Lets you tell
     # "Strong on full coverage" apart from "Strong, but only 60% of the
     # formula had data" at a glance, without digging into which specific
     # column was null.
@@ -794,6 +803,63 @@ def compute_smallmicro_score(df: pd.DataFrame) -> pd.DataFrame:
         lambda s: "Insufficient Data" if pd.isna(s)
         else ("Strong" if s >= config.SMALLMICRO_STRONG_THRESHOLD
               else ("Watch" if s >= config.SMALLMICRO_WATCH_THRESHOLD else "Weak"))
+    )
+
+    return df
+
+
+def compute_smallmicro_strict_checklist(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    A SEPARATE pass/fail flag, NOT a pre-filter on compute_smallmicro_score
+    — every liquidity-qualified stock still gets a full smallmicro_score
+    regardless of whether it passes this checklist. Call this AFTER
+    compute_smallmicro_score (needs the OBV/RS percentile ranks computed
+    there — recomputed identically here rather than threading them through,
+    since they're cheap and this keeps the function self-contained).
+
+    All four of the following must be True for smallmicro_strict_pass:
+      1. OBV percentile (obv_52w_range_pct) >= SMALLMICRO_STRICT_TOP_DECILE_THRESHOLD (90th)
+      2. RS percentile (rs_score, ranked within this universe) >= same threshold
+      3. near_breakout_15pct is True (within 15% of the 52-week high —
+         reuses the existing column rather than recomputing the threshold)
+      4. avg_daily_traded_value >= SMALLMICRO_STRICT_MIN_TURNOVER_INR (₹2cr/day
+         — deliberately much stricter than the ₹50L/day scoring-eligibility
+         floor in compute_liquidity_gate; a stock can pass that floor, get
+         scored, and still fail this)
+
+    Adds:
+      - smallmicro_strict_pass: True/False (never NaN — any missing input
+        is treated as a fail, since "we don't know" can't satisfy a strict
+        "must be true" checklist)
+      - smallmicro_strict_fail_reasons: comma-joined list of which
+        condition(s) failed, blank if smallmicro_strict_pass is True — so a
+        near-miss is immediately diagnosable from the sheet alone
+    """
+    df = df.copy()
+    thresh = config.SMALLMICRO_STRICT_TOP_DECILE_THRESHOLD
+
+    obv_rank = df["obv_52w_range_pct"]                 # already a 0-100 percentile by construction
+    rs_rank = _pct_rank(df["rs_score"])                # ranked within this universe, same as the score component
+
+    cond_obv = obv_rank >= thresh
+    cond_rs = rs_rank >= thresh
+    cond_near_high = df["near_breakout_15pct"].astype(bool)
+    cond_liquidity = df["avg_daily_traded_value"] >= config.SMALLMICRO_STRICT_MIN_TURNOVER_INR
+
+    # NaN-safe: treat any missing input as failing that specific condition,
+    # not as passing it (fillna(False) — "unknown" should never satisfy a
+    # "must be true" checklist).
+    conditions = {
+        "obv_below_top_decile": ~cond_obv.fillna(False),
+        "rs_below_top_decile": ~cond_rs.fillna(False),
+        "not_within_15pct_of_52w_high": ~cond_near_high.fillna(False),
+        "turnover_below_2cr": ~cond_liquidity.fillna(False),
+    }
+    failed = pd.DataFrame(conditions)
+
+    df["smallmicro_strict_pass"] = ~failed.any(axis=1)
+    df["smallmicro_strict_fail_reasons"] = failed.apply(
+        lambda row: ", ".join(name for name, is_failed in row.items() if is_failed), axis=1
     )
 
     return df

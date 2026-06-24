@@ -85,36 +85,53 @@ NSE_SMALLMICRO_FALLBACK_TICKERS = [
 # first cut, not a tuned result. Revisit once this tier has its own
 # walk-forward backtest (see backtest.py methodology).
 #
-# Liquidity gate (computed FIRST, before any score): small/microcap stocks
-# can show a great-looking MACD crossover or OBV slope on a handful of
-# thinly-traded days that mean nothing tradeable — NSE500/SP500 never
-# needed this gate because every constituent there is liquid enough by
-# default. No precise, citable "right" threshold exists for this (checked);
-# this number is a deliberately conservative starting point for you to
-# tune after seeing real output, exactly like MIN_SALES_CAGR/MIN_ROCE below.
+# Liquidity scoring-eligibility floor (computed FIRST, before any score):
+# small/microcap stocks can show a great-looking technical signal on a
+# handful of thinly-traded days that mean nothing tradeable — NSE500/SP500
+# never needed this because every constituent there is liquid enough by
+# default. This is a MINIMAL floor for whether a stock gets scored at all
+# — deliberately lower than SMALLMICRO_STRICT_MIN_TURNOVER_INR below, which
+# is the much stricter bar for the separate pass/fail checklist. A stock
+# between this floor and the strict bar still gets a full score (including
+# a liquidity component that reflects it's on the lower side) — it just
+# won't pass the strict checklist. No precise, citable "right" threshold
+# exists for either number (checked); both are starting points to tune
+# after seeing real output, same status as MIN_SALES_CAGR/MIN_ROCE below.
 LIQUIDITY_LOOKBACK_DAYS = 20                  # trading days averaged for avg_daily_traded_value
-MIN_AVG_DAILY_TRADED_VALUE_INR = 5_000_000    # ₹50 lakh/day — UNVALIDATED starting default, tune freely
+MIN_AVG_DAILY_TRADED_VALUE_INR = 5_000_000    # ₹50 lakh/day — scoring-eligibility floor, UNVALIDATED, tune freely
 LIQUIDITY_DATA_QUALITY_MIN_DAYS = 10          # need at least this many real trading days in the window to trust the average
 
 # SmallMicroScore component weights (must sum to 100). No shareholding
 # weight exists here (NSE_SMALLMICRO never gets MF/FII data — see
-# README), redistributed into Earnings Acceleration instead since that's
-# real, computed, per-ticker (not a cross-sectional rank, so safe to use
-# without contaminating anything), and otherwise unused in this tier.
-#
-# These specific values (OBV 30/RS 20/MACD 10/Trend 20/Earnings 20) are
-# your explicit call, not a derived or backtested split — still carries
-# the same UNVALIDATED status as everything else in this block until this
-# tier gets its own walk-forward backtest.
+# README). Redesigned (2nd revision) around your own post-analysis
+# conviction: OBV and RS dominate, MACD and Trend dropped entirely,
+# Near-52-Week-High added as its own weighted component (previously just
+# a binary flag), Liquidity promoted from gate-only to also being a scored
+# component. These specific values are your explicit call, not a derived
+# or backtested split — still carries the same UNVALIDATED status as
+# everything else in this block until this tier gets its own walk-forward
+# backtest.
 SMALLMICRO_SCORE_WEIGHTS = {
-    "obv_leadership": 30,      # obv_52w_range_pct — your most-trusted signal on NSE500/SP500;
+    "obv_leadership": 40,      # obv_52w_range_pct — your most-trusted signal on NSE500/SP500;
                                # NOT yet proven on this tier, weighted highest on a hypothesis, not evidence
-    "rs": 20,                  # rs_score vs Nifty 50
-    "macd": 10,                # daily + weekly MACD combined
-    "trend": 20,               # Supertrend + EMA alignment
-    "earnings_acceleration": 20,  # earnings_acceleration_score, rescaled to this tier's 0-100 share
+    "rs": 25,                  # rs_score vs Nifty 50, percentile-ranked within this universe
+    "near_52w_high": 15,       # pct_from_52w_high, inverted + percentile-ranked (closer to high = higher score)
+    "earnings_acceleration": 10,  # earnings_acceleration_score, rescaled to this tier's 0-100 share
+    "liquidity": 10,           # avg_daily_traded_value, percentile-ranked within this universe
 }
 assert sum(SMALLMICRO_SCORE_WEIGHTS.values()) == 100, "SMALLMICRO_SCORE_WEIGHTS must sum to 100"
+
+# Strict pass/fail checklist — a SEPARATE flag from smallmicro_score, not a
+# pre-filter on it (every liquidity-qualified stock still gets a full score
+# regardless of whether it passes this). All four must be true for
+# smallmicro_strict_pass to be True. "Top decile" uses the same >=90th
+# percentile convention as OBV_LEADERSHIP_RANK_TOP_DECILE_THRESHOLD above,
+# for consistency with the rest of this codebase.
+SMALLMICRO_STRICT_TOP_DECILE_THRESHOLD = 90       # OBV and RS percentile must be >= this
+SMALLMICRO_STRICT_MIN_TURNOVER_INR = 20_000_000   # ₹2 crore/day — much stricter than the scoring floor above, by design
+# "Within 15% of 52-week high" reuses the existing near_breakout_15pct
+# column (built from NEAR_BREAKOUT_THRESHOLD_PCT = 15.0 below) rather than
+# a new constant — same threshold, already computed, no need to duplicate it.
 
 # Category thresholds — deliberately different category NAMES from
 # composite_score's (Elite Compounder/Emerging/Exit/Watch), not just
