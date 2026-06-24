@@ -607,6 +607,72 @@ expect this checklist to pass only a small handful of names even when the
 overall score looks healthy across the board — that's the design working
 as intended, not a bug.
 
+### Backtesting SmallMicroScore
+
+`backtest.py` extends the existing walk-forward methodology (same
+no-lookahead-bias construction: every indicator computed from
+`df.loc[:asof_date]` only, forward returns measured strictly after that
+date) to this tier. Set `config.BACKTEST_UNIVERSE = "NSE_SmallMicro"` and
+run via `backtest_workflow.yml` exactly like the NSE500/SP500 backtest —
+results land in a separate Google Sheets tab
+(`config.BACKTEST_SMALLMICRO_RESULTS_TAB_NAME`, default
+`Backtest_Results_SmallMicro`) so they never overwrite the NSE500/SP500
+results if you switch `BACKTEST_UNIVERSE` back and forth.
+
+**Signals tested** (`backtest.SMALLMICRO_SIGNAL_DEFINITIONS`) — both
+component-level and composite-level, deliberately broken apart the same
+way the original backtest discovered OBV was trustworthy and volatility
+compression wasn't (you can't learn that from a composite score alone):
+
+- `smallmicro_obv_top_decile`, `smallmicro_rs_top_decile`,
+  `smallmicro_near_52w_high`, `smallmicro_earnings_accelerating`,
+  `smallmicro_high_liquidity` — each component in isolation (liquidity
+  tested at the same 90th-percentile bar as the others here, even though
+  the live score only *weights* it, never gates on a top-decile basis —
+  for a fair side-by-side against the components that genuinely are gated
+  that way in the strict checklist)
+- `smallmicro_strict_pass`, `smallmicro_score_above_70`,
+  `smallmicro_score_above_50`, `baseline_all_smallmicro` — the actual
+  composite outputs you'd act on
+
+**Two real limitations specific to this backtest, beyond the existing
+"fundamentals aren't historically reconstructed" simplification:**
+
+1. **Earnings Acceleration isn't tested either, for the same reason.**
+   `eps_acceleration`/`revenue_acceleration` require point-in-time-correct
+   historical quarterly statements, which this backtest doesn't attempt to
+   solve. `compute_earnings_acceleration_score` gracefully returns `NaN`
+   for every row when fed no `eps_acceleration` column (rather than
+   erroring), and the score's renormalization correctly redistributes that
+   10-point weight across the other 4 components — so the backtest
+   faithfully tests OBV/RS/Near-52w-High/Liquidity, but the
+   `smallmicro_earnings_accelerating` signal will always show
+   `sample_size: 0` (confirmed in testing). A live score still gets a
+   chance to be pulled up or down by real earnings data this backtest
+   can't replicate.
+2. **Survivorship bias risk, unlike NSE500/SP500.** This universe is
+   fetched fresh from TODAY's Smallcap 250 + Microcap 250 list (see
+   `universe.py`) — there's no free historical reconstruction of index
+   membership at this size tier. Testing today's list against years-old
+   price history silently assumes these same ~250-500 names were already
+   at this size tier back then, which isn't strictly true: NSE rebalances
+   this list twice a year, so some names may have since grown into
+   NSE500, and some may not have existed at this tier yet at earlier
+   snapshot dates. Results here are more likely to be optimistic than a
+   true historical small/microcap backtest would be, since today's list
+   is itself a survivor of whatever happened since. Keep this in mind
+   before treating any result here with the same confidence as the
+   NSE500/SP500 backtest evidence (e.g. `elite_score_above_65`'s
+   +3.48pp-excess, n=532 result) — it isn't an apples-to-apples comparison.
+
+A standalone smoketest (`diagnostics/smallmicro_backtest_smoketest.py`,
+not part of the daily pipeline or `backtest_workflow.yml`) exercises this
+whole path end-to-end against synthetic multi-year price data, since live
+NSE/Yahoo data isn't reachable from every environment — useful to re-run
+after any future change to `compute_smallmicro_score` or the strict
+checklist, to catch a wiring break before running the real (much slower,
+quota-costing) backtest.
+
 **Treat `smallmicro_score` as a research starting point, not yet a
 trading signal.** None of this has been backtested — not the weights, not
 the liquidity threshold, not the indicators' predictive value on this

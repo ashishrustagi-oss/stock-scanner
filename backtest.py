@@ -114,6 +114,74 @@ def compute_signals_for_snapshot(
     return metrics_df
 
 
+def compute_smallmicro_signals_for_snapshot(
+    price_data: dict[str, pd.DataFrame], index_close_full: pd.Series, asof_date,
+) -> pd.DataFrame:
+    """
+    SmallMicroScore variant of compute_signals_for_snapshot above — same
+    point-in-time-safe construction (build_metrics_row on df_asof =
+    df_full.loc[:asof_date] only), but runs compute_liquidity_gate +
+    compute_smallmicro_score + compute_smallmicro_strict_checklist instead
+    of composite_score/EliteCompounderScore.
+
+    SIMPLIFICATION — earnings acceleration is not historically reconstructed:
+    same spirit as the module-level "fundamentals are not historically
+    reconstructed" simplification above. eps_acceleration/revenue_acceleration
+    require point-in-time-correct historical quarterly statements, which
+    this backtest doesn't attempt to solve. compute_earnings_acceleration_score
+    already handles a missing eps_acceleration column gracefully (returns
+    NaN for every row, doesn't error), and compute_smallmicro_score's
+    renormalization correctly redistributes that 10-point weight across the
+    other 4 components rather than nulling the whole score — so this
+    backtest faithfully tests OBV/RS/Near-52w-High/Liquidity, but NOT the
+    Earnings Acceleration component's real-world predictive power. Keep
+    this in mind reading results: a live score also has a chance to be
+    pulled up or down by real earnings data this backtest can't replicate.
+
+    SURVIVORSHIP CAVEAT — unlike NSE500/SP500, this universe is fetched
+    fresh from TODAY's Smallcap 250 + Microcap 250 list (see universe.py;
+    no historical reconstruction of index membership exists as a free data
+    source). Testing today's list against years-old price history silently
+    assumes these same ~250-500 names were already at this size tier back
+    then, which isn't strictly true — NSE rebalances this list twice a
+    year, so some names may have since grown into NSE500, and some may not
+    have existed at this tier yet at earlier snapshot dates. This is a real
+    limitation, not just a disclaimer — results here are more likely to be
+    optimistic than a true historical small/microcap backtest would be,
+    since today's list is itself a survivor of whatever happened since.
+    """
+    rows = []
+    index_close_asof = index_close_full.loc[:asof_date]
+    if len(index_close_asof) < 100:
+        return pd.DataFrame()
+
+    for ticker, df_full in price_data.items():
+        df_asof = df_full.loc[:asof_date]
+        if len(df_asof) < config.BACKTEST_MIN_HISTORY_DAYS:
+            continue
+        try:
+            row = metrics_builder.build_metrics_row(
+                ticker, df_asof, index_close_asof, sector_close=index_close_asof,
+                sector_source="BACKTEST_NO_SECTOR",
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Signal computation failed for %s @ %s: %s", ticker, asof_date, exc)
+            continue
+        row["ticker"] = ticker
+        rows.append(row)
+
+    if not rows:
+        return pd.DataFrame()
+
+    metrics_df = pd.DataFrame(rows)
+    # No eps_acceleration/revenue_acceleration columns here — see docstring.
+    metrics_df = sc.compute_earnings_acceleration_score(metrics_df)  # gracefully returns NaN for all rows
+    metrics_df = sc.compute_liquidity_gate(metrics_df)
+    metrics_df = sc.compute_smallmicro_score(metrics_df)
+    metrics_df = sc.compute_smallmicro_strict_checklist(metrics_df)
+    return metrics_df
+
+
 # ----------------------------------------------------------------------------
 # Signal definitions to test — (name, boolean mask function)
 # ----------------------------------------------------------------------------
@@ -131,23 +199,56 @@ SIGNAL_DEFINITIONS = {
     "baseline_all_stocks": lambda df: pd.Series(True, index=df.index),
 }
 
+# SmallMicroScore signals — separate dict, used only when
+# config.BACKTEST_UNIVERSE == "NSE_SmallMicro". Component-level signals
+# isolate each piece of the formula (the same way the original backtest
+# discovered OBV was trustworthy and volatility compression wasn't — you
+# can't learn that from the composite alone). Top-decile thresholds use
+# config.SMALLMICRO_STRICT_TOP_DECILE_THRESHOLD for consistency with the
+# live strict checklist, even for components the live score doesn't gate
+# on at that bar (e.g. liquidity is only WEIGHTED live, never gated at the
+# 90th percentile — tested here anyway, for a fair side-by-side against
+# the components that ARE gated that way).
+SMALLMICRO_SIGNAL_DEFINITIONS = {
+    # Component-level — isolate each piece of the formula
+    "smallmicro_obv_top_decile": lambda df: df["obv_52w_range_pct"] >= config.SMALLMICRO_STRICT_TOP_DECILE_THRESHOLD,
+    "smallmicro_rs_top_decile": lambda df: sc._pct_rank(df["rs_score"]) >= config.SMALLMICRO_STRICT_TOP_DECILE_THRESHOLD,
+    "smallmicro_near_52w_high": lambda df: df["near_breakout_15pct"] == 1.0,
+    "smallmicro_earnings_accelerating": lambda df: df["flag_earnings_accelerating"] == "🟢",
+    "smallmicro_high_liquidity": lambda df: sc._pct_rank(df["avg_daily_traded_value"]) >= config.SMALLMICRO_STRICT_TOP_DECILE_THRESHOLD,
+    # Composite-level — the actual outputs you'd act on
+    "smallmicro_strict_pass": lambda df: df["smallmicro_strict_pass"] == True,  # noqa: E712
+    "smallmicro_score_above_70": lambda df: df["smallmicro_score"] > 70,
+    "smallmicro_score_above_50": lambda df: df["smallmicro_score"] > 50,
+    "baseline_all_smallmicro": lambda df: pd.Series(True, index=df.index),
+}
+
 
 def run_backtest(
     tickers: list[str], price_data: dict[str, pd.DataFrame], index_close: pd.Series,
     snapshot_dates: list, horizons_days: dict[str, int],
+    snapshot_fn=compute_signals_for_snapshot, signal_definitions: dict = None,
 ) -> pd.DataFrame:
     """
     Returns a long-format DataFrame: one row per (ticker, snapshot_date)
     with every signal's boolean value and every horizon's forward return.
+
+    snapshot_fn and signal_definitions default to the original NSE500/SP500
+    behavior (compute_signals_for_snapshot + SIGNAL_DEFINITIONS) so existing
+    backtests are unaffected. Pass compute_smallmicro_signals_for_snapshot +
+    SMALLMICRO_SIGNAL_DEFINITIONS for the NSE_SmallMicro tier.
     """
+    if signal_definitions is None:
+        signal_definitions = SIGNAL_DEFINITIONS
+
     records = []
     for i, asof_date in enumerate(snapshot_dates):
         logger.info("Snapshot %d/%d: %s", i + 1, len(snapshot_dates), asof_date.date())
-        metrics_df = compute_signals_for_snapshot(price_data, index_close, asof_date)
+        metrics_df = snapshot_fn(price_data, index_close, asof_date)
         if metrics_df.empty:
             continue
 
-        signal_flags = {name: fn(metrics_df) for name, fn in SIGNAL_DEFINITIONS.items()}
+        signal_flags = {name: fn(metrics_df) for name, fn in signal_definitions.items()}
 
         for idx, row in metrics_df.iterrows():
             ticker = row["ticker"]
@@ -172,13 +273,15 @@ def run_backtest(
     return long_df, bench_df
 
 
-def aggregate_results(long_df: pd.DataFrame, bench_df: pd.DataFrame, horizons_days: dict[str, int]) -> pd.DataFrame:
+def aggregate_results(long_df: pd.DataFrame, bench_df: pd.DataFrame, horizons_days: dict[str, int], signal_definitions: dict = None) -> pd.DataFrame:
     """Per-signal summary: sample size, mean/median/hit-rate per horizon, vs benchmark excess return."""
+    if signal_definitions is None:
+        signal_definitions = SIGNAL_DEFINITIONS
     if long_df.empty:
         return pd.DataFrame()
 
     summary_rows = []
-    for sig_name in SIGNAL_DEFINITIONS:
+    for sig_name in signal_definitions:
         subset = long_df[long_df[sig_name] == True]  # noqa: E712
         row = {"signal": sig_name, "sample_size": len(subset)}
         for h_name in horizons_days:
@@ -205,9 +308,29 @@ def main():
     if universe_label == "NSE500":
         uni_df = universe.get_nse500_universe()
         index_ticker = config.INDEX_TICKER_NSE
+        snapshot_fn = compute_signals_for_snapshot
+        signal_definitions = SIGNAL_DEFINITIONS
+        results_tab_name = config.BACKTEST_RESULTS_TAB_NAME
+    elif universe_label == "NSE_SmallMicro":
+        uni_df = universe.get_nse_smallmicro_universe()
+        index_ticker = config.INDEX_TICKER_NSE
+        snapshot_fn = compute_smallmicro_signals_for_snapshot
+        signal_definitions = SMALLMICRO_SIGNAL_DEFINITIONS
+        results_tab_name = config.BACKTEST_SMALLMICRO_RESULTS_TAB_NAME
+        logger.warning(
+            "NSE_SmallMicro backtest: survivorship caveat applies — this universe is "
+            "fetched fresh from TODAY's Smallcap 250 + Microcap 250 list, not "
+            "reconstructed historically. See compute_smallmicro_signals_for_snapshot's "
+            "docstring before trusting these results. Earnings Acceleration component "
+            "also isn't tested here (no point-in-time historical quarterly data) — "
+            "see the same docstring."
+        )
     else:
         uni_df = universe.get_sp500_universe()
         index_ticker = config.INDEX_TICKER_US
+        snapshot_fn = compute_signals_for_snapshot
+        signal_definitions = SIGNAL_DEFINITIONS
+        results_tab_name = config.BACKTEST_RESULTS_TAB_NAME
 
     tickers = uni_df["yf_ticker"].tolist()
     if config.BACKTEST_MAX_TICKERS:
@@ -233,19 +356,22 @@ def main():
         [all_dates[all_dates.searchsorted(d)] for d in snapshot_dates if all_dates.searchsorted(d) < len(all_dates)]
     logger.info("Running %d snapshot dates from %s to %s", len(snapshot_dates), snapshot_dates[0].date(), snapshot_dates[-1].date())
 
-    long_df, bench_df = run_backtest(tickers, price_data, index_close, snapshot_dates, config.BACKTEST_HORIZONS_DAYS)
-    summary_df = aggregate_results(long_df, bench_df, config.BACKTEST_HORIZONS_DAYS)
+    long_df, bench_df = run_backtest(
+        tickers, price_data, index_close, snapshot_dates, config.BACKTEST_HORIZONS_DAYS,
+        snapshot_fn=snapshot_fn, signal_definitions=signal_definitions,
+    )
+    summary_df = aggregate_results(long_df, bench_df, config.BACKTEST_HORIZONS_DAYS, signal_definitions=signal_definitions)
 
     logger.info("Backtest complete. Signal summary:\n%s", summary_df.to_string())
 
-    out_path = "backtest_results.csv"
+    out_path = "backtest_results.csv" if universe_label != "NSE_SmallMicro" else "backtest_results_smallmicro.csv"
     summary_df.to_csv(out_path, index=False)
     logger.info("Saved summary to %s", out_path)
 
     if config.GOOGLE_SHEET_ID:
         try:
-            sheets_export.export_to_sheets({config.BACKTEST_RESULTS_TAB_NAME: summary_df})
-            logger.info("Exported summary to Google Sheets tab '%s'", config.BACKTEST_RESULTS_TAB_NAME)
+            sheets_export.export_to_sheets({results_tab_name: summary_df})
+            logger.info("Exported summary to Google Sheets tab '%s'", results_tab_name)
         except Exception as exc:  # noqa: BLE001
             logger.warning("Could not export to Google Sheets (CSV was still saved): %s", exc)
 

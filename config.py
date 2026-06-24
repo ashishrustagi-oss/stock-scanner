@@ -85,32 +85,27 @@ NSE_SMALLMICRO_FALLBACK_TICKERS = [
 # first cut, not a tuned result. Revisit once this tier has its own
 # walk-forward backtest (see backtest.py methodology).
 #
-# Liquidity scoring-eligibility floor (computed FIRST, before any score):
-# small/microcap stocks can show a great-looking technical signal on a
-# handful of thinly-traded days that mean nothing tradeable — NSE500/SP500
-# never needed this because every constituent there is liquid enough by
-# default. This is a MINIMAL floor for whether a stock gets scored at all
-# — deliberately lower than SMALLMICRO_STRICT_MIN_TURNOVER_INR below, which
-# is the much stricter bar for the separate pass/fail checklist. A stock
-# between this floor and the strict bar still gets a full score (including
-# a liquidity component that reflects it's on the lower side) — it just
-# won't pass the strict checklist. No precise, citable "right" threshold
-# exists for either number (checked); both are starting points to tune
-# after seeing real output, same status as MIN_SALES_CAGR/MIN_ROCE below.
+# Liquidity gate (computed FIRST, before any score): small/microcap stocks
+# can show a great-looking MACD crossover or OBV slope on a handful of
+# thinly-traded days that mean nothing tradeable — NSE500/SP500 never
+# needed this gate because every constituent there is liquid enough by
+# default. No precise, citable "right" threshold exists for this (checked);
+# this number is a deliberately conservative starting point for you to
+# tune after seeing real output, exactly like MIN_SALES_CAGR/MIN_ROCE below.
 LIQUIDITY_LOOKBACK_DAYS = 20                  # trading days averaged for avg_daily_traded_value
 MIN_AVG_DAILY_TRADED_VALUE_INR = 5_000_000    # ₹50 lakh/day — scoring-eligibility floor, UNVALIDATED, tune freely
 LIQUIDITY_DATA_QUALITY_MIN_DAYS = 10          # need at least this many real trading days in the window to trust the average
 
 # SmallMicroScore component weights (must sum to 100). No shareholding
-# weight exists here (NSE_SMALLMICRO never gets MF/FII data — see
-# README). Redesigned (2nd revision) around your own post-analysis
-# conviction: OBV and RS dominate, MACD and Trend dropped entirely,
-# Near-52-Week-High added as its own weighted component (previously just
-# a binary flag), Liquidity promoted from gate-only to also being a scored
-# component. These specific values are your explicit call, not a derived
-# or backtested split — still carries the same UNVALIDATED status as
-# everything else in this block until this tier gets its own walk-forward
-# backtest.
+# weight exists here (NSE_SMALLMICRO never gets MF/FII data — see README).
+#
+# 2nd revision (your own post-analysis call): MACD and Trend dropped
+# entirely, OBV and RS pushed higher, Near-52-Week-High promoted from a
+# binary flag to its own weighted component, Liquidity promoted from
+# gate-only to also being scored. These specific values are your explicit
+# call, not a derived or backtested split — still carries the same
+# UNVALIDATED status as everything else in this block until this tier gets
+# its own walk-forward backtest.
 SMALLMICRO_SCORE_WEIGHTS = {
     "obv_leadership": 40,      # obv_52w_range_pct — your most-trusted signal on NSE500/SP500;
                                # NOT yet proven on this tier, weighted highest on a hypothesis, not evidence
@@ -294,7 +289,7 @@ EARNINGS_ACCELERATING_TAB_TOP_N = 30             # how many stocks the EARNINGS_
 # Widen these only after confirming a smaller run completes in reasonable
 # time. Run manually via backtest_workflow.yml, never as part of daily scan.
 # ════════════════════════════════════════════════════════════════════════════
-BACKTEST_UNIVERSE = "NSE500"          # "NSE500" or "SP500" — one at a time
+BACKTEST_UNIVERSE = "NSE500"          # "NSE500", "SP500", or "NSE_SmallMicro" — one at a time
 BACKTEST_MAX_TICKERS = 300            # None = full universe (slow); widened from 100 after a clean 7m43s test run
 BACKTEST_LOOKBACK_YEARS = 3           # how far back snapshot dates go
 BACKTEST_SNAPSHOT_FREQ = "MS"         # "MS" = monthly (1st of month); "W" = weekly (much slower)
@@ -303,6 +298,10 @@ BACKTEST_HORIZONS_DAYS = {
     "1m": 21, "3m": 63, "6m": 126, "12m": 252,
 }
 BACKTEST_RESULTS_TAB_NAME = "Backtest_Results"
+# Separate tab so a NSE_SmallMicro backtest run never overwrites NSE500/
+# SP500 results (or vice versa) if you switch BACKTEST_UNIVERSE and re-run
+# without remembering to rename anything.
+BACKTEST_SMALLMICRO_RESULTS_TAB_NAME = "Backtest_Results_SmallMicro"
 
 # ----------------------------------------------------------------------------
 # INDICATOR PARAMETERS
