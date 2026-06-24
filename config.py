@@ -327,6 +327,7 @@ BACKTEST_SMALLMICRO_RESULTS_TAB_NAME = "Backtest_Results_SmallMicro"
 # ----------------------------------------------------------------------------
 OBV_SLOPE_SHORT_WINDOW = 20
 OBV_SLOPE_LONG_WINDOW = 50
+OBV_SLOPE_VERY_LONG_WINDOW = 200   # ~1y trading days; added to mirror the Pine Script dashboard's 3rd OBV slope window
 
 MACD_FAST, MACD_SLOW, MACD_SIGNAL = 12, 26, 9
 

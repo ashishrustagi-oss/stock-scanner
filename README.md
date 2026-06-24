@@ -839,6 +839,39 @@ Purely additive — doesn't change `composite_score` or
 (the early-detection strict filter, Trend Birth, the original Elite
 Compounder OBV sub-score) are completely unchanged.
 
+**Real bug found and fixed in `obv_slope()` (24-06-2026), which affects
+this rank directly** — `obv_leadership_rank` blends `obv_slope_13w` and
+`obv_slope_26w`, both built on the same `obv_slope()` function used
+elsewhere (`obv_slope_20d`, `obv_slope_50d`). The function normalizes its
+regression slope by `mean(abs(OBV))` over the window — found to break down
+specifically when OBV crosses from negative to positive (or vice versa)
+within the lookback window, since values near the crossing point pull the
+denominator toward zero while the slope itself can still be genuinely
+steep, inflating the result. Confirmed on real data via a Pine Script
+side-by-side: IDEA's 50-day OBV window crossed from -4.48B to +4.19B,
+producing 7.11% from the original formula when a manual check of the same
+real values indicated the true magnitude was closer to 1-2%. Its 20-day
+window over the same period never crossed zero and was correctly
+unaffected (1.47%, matched expectations exactly) — confirming the bug was
+specific to the zero-crossing case, not a wholesale formula error.
+
+Fix: `obv_slope()` now checks whether the window's OBV values span across
+zero (`min < 0 < max`). If so, it falls back to normalizing by the
+window's own range (`max - min`) instead of mean-abs — range stays
+meaningful even when values cross zero. Deliberately a fallback, not a
+replacement: every non-crossing window (the overwhelming majority of
+cases for most stocks) continues using the original mean-abs normalizer
+unchanged, verified to produce byte-identical results to before the fix.
+Since `obv_leadership_rank` is a percentile RANK, not a raw value, a
+handful of zero-crossing stocks having a corrected, smaller slope mainly
+just means they won't be artificially inflated relative to their peers —
+the backtest evidence above (`obv_52w_high` and the original
+`obv_slope_13w`/`26w` blend) was overwhelmingly built on stocks that
+didn't hit this edge case, so the headline finding stands, but if you
+re-run the backtest, expect `obv_leadership_rank`'s exact percentile
+boundaries to shift slightly for whichever stocks happen to cross zero
+during any given window.
+
 ### A finding worth remembering from the backtest before building further
 
 Trend Birth's apparent edge (+2.06pp excess at 3m with 38 samples)

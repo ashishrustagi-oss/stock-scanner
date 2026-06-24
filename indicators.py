@@ -25,12 +25,42 @@ def obv_slope(obv_series: pd.Series, window: int) -> float:
     Linear-regression slope of OBV over the last `window` bars, normalized by
     the mean absolute OBV level over that window so it's comparable across
     stocks of wildly different volume scale. Returned as a %-per-day figure.
+
+    KNOWN ISSUE FOUND AND FIXED (24-06-2026): mean(abs(OBV)) breaks down as a
+    normalizer specifically when OBV crosses zero within the window — values
+    near the crossing point pull the mean-abs denominator down toward zero
+    while the regression slope itself can still be steep (since OBV genuinely
+    swung from negative to positive), producing an inflated, misleading
+    percentage. Confirmed on real data: IDEA's 50-day window crossed from
+    -4.48B to +4.19B, producing 7.11% from this formula alone, when a
+    manual check of the same real OBV values suggested the true magnitude
+    of the move was closer to 1-2%. The 20-day window over the same period
+    never crossed zero and was unaffected (1.47%, matched expectations).
+
+    Fix: when the window's OBV values span across zero (min and max have
+    opposite signs), fall back to normalizing by the window's own RANGE
+    (max - min) instead of mean(abs(...)) — range stays meaningful even
+    when values cross zero, unlike a denominator built from magnitudes that
+    average toward zero near the crossing point. Deliberately a FALLBACK,
+    not a wholesale replacement: every other (non-crossing) window continues
+    using the original mean-abs normalizer exactly as before, so this only
+    changes behavior for the specific case that was actually broken — it
+    does not change every stock's existing slope numbers, only the ones
+    that were unreliable in the first place.
     """
     recent = obv_series.dropna().iloc[-window:]
     if len(recent) < window:
         return np.nan
     x = np.arange(len(recent))
     slope, _intercept = np.polyfit(x, recent.values, 1)
+
+    crosses_zero = recent.min() < 0 < recent.max()
+    if crosses_zero:
+        rng = recent.max() - recent.min()
+        if rng == 0 or np.isnan(rng):
+            return np.nan
+        return float(slope / rng * 100)
+
     scale = np.abs(recent).mean()
     if scale == 0 or np.isnan(scale):
         return np.nan

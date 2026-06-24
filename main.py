@@ -222,7 +222,7 @@ DISPLAY_COLUMNS = [
     "elite_score_supertrend", "elite_score_weekly_macd",
     "elite_score_above_ema20", "elite_score_fundamentals",
     # OBV (original + Leadership module)
-    "obv_slope_20d", "obv_slope_50d", "obv_52w_range_pct",
+    "obv_slope_20d", "obv_slope_50d", "obv_slope_200d", "obv_52w_range_pct",
     "obv_52w_high", "obv_26w_high", "obv_slope_13w", "obv_slope_26w",
     # Daily MACD (original + Early module)
     "daily_macd", "daily_signal", "daily_hist", "macd_early_bullish",
@@ -287,7 +287,7 @@ RAW_DISPLAY_COLUMNS = [
     "liquidity_qualified", "avg_daily_traded_value",
     "RS_vs_Broad_Index_pct", "rs_score",
     # OBV
-    "obv_slope_20d", "obv_slope_50d", "obv_52w_range_pct",
+    "obv_slope_20d", "obv_slope_50d", "obv_slope_200d", "obv_52w_range_pct",
     "obv_52w_high", "obv_26w_high", "obv_price_divergence",
     # MACD (daily/weekly/monthly)
     "daily_macd", "daily_signal", "daily_hist", "macd_early_bullish", "macd_early_bearish",

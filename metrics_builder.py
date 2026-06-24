@@ -64,6 +64,7 @@ def build_metrics_row(
         "obv":                    float(obv_series.iloc[-1]),
         "obv_slope_20d":          ind.obv_slope(obv_series, config.OBV_SLOPE_SHORT_WINDOW),
         "obv_slope_50d":          ind.obv_slope(obv_series, config.OBV_SLOPE_LONG_WINDOW),
+        "obv_slope_200d":         ind.obv_slope(obv_series, config.OBV_SLOPE_VERY_LONG_WINDOW),
         "obv_52w_range_pct":      ind.obv_52w_range_pct(obv_series),
         # ── OBV Leadership module ──
         "obv_52w_high":           ind.is_at_nbar_high(obv_series, config.WEEKS_52_IN_DAYS),
