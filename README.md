@@ -533,21 +533,23 @@ either existing one, for three reasons:
    score — a stock scored on technicals alone is always labeled as such,
    never silently presented the same as one with confirmed fundamentals.
 
-**Components** (`config.SMALLMICRO_SCORE_WEIGHTS` — your explicit weights,
-not a derived/backtested split, same UNVALIDATED status as everything else
-here until this tier gets its own walk-forward backtest. **2nd revision**,
-based on your own post-analysis read of the first version: MACD and Trend
-dropped entirely, OBV and RS pushed higher, Near-52-Week-High promoted
-from a binary flag to its own weighted component, Liquidity promoted from
-gate-only to also being scored):
+**Components** (`config.SMALLMICRO_SCORE_WEIGHTS` — see revision history
+below; still UNVALIDATED in the full sense, since no signal here has yet
+hit the two-confirming-runs standard OBV itself had to meet on NSE500/SP500
+before being trusted there):
 
 | Component | Weight | What it reuses |
 |---|---|---|
-| OBV Leadership | 40 | `obv_52w_range_pct` — your most-trusted signal on NSE500/SP500 (it got *more* reliable with more backtest data there); weighted highest here on that hypothesis, with zero evidence yet that it holds on this tier |
-| Relative Strength | 25 | `rs_score` vs Nifty 50, percentile-ranked within this universe only |
-| Near 52-Week High | 15 | `pct_from_52w_high`, inverted (closer to the high scores higher) and percentile-ranked within this universe |
-| Earnings Acceleration | 10 | `earnings_acceleration_score`, rescaled from its native 0-20 scale |
-| Liquidity | 10 | `avg_daily_traded_value`, percentile-ranked within this universe — a graded reward for being MORE liquid than peers, distinct from the pass/fail `liquidity_qualified` gate above |
+| Relative Strength | 40 | `rs_score` vs Nifty 50, percentile-ranked within this universe only — **strongest single component in the first backtest** (+38.27pp excess at 12m, n=410) |
+| OBV Leadership | 25 | `obv_52w_range_pct` — your most-trusted signal on NSE500/SP500, but outperformed by RS here (+26.68pp excess at 12m, n=2,626) in the first backtest; demoted but still meaningfully weighted pending a 2nd confirming run either way |
+| Near 52-Week High | 20 | `pct_from_52w_high`, inverted (closer to the high scores higher) and percentile-ranked — 2nd-strongest in the first backtest (+25.97pp excess at 12m, n=2,325, clean monotonic hit-rate climb across horizons) |
+| Earnings Acceleration | 10 | `earnings_acceleration_score`, rescaled from its native 0-20 scale — untested in the backtest (n=0; earnings acceleration isn't historically reconstructed, see "Backtesting SmallMicroScore" below) |
+| Liquidity | 5 | `avg_daily_traded_value`, percentile-ranked — showed ~zero predictive value as a SCORED component in the first backtest (+1.14pp excess at 12m, 48.7% hit rate, *below* 50%); cut from 10 but not removed, since one run isn't yet the two-run standard. Distinct from the pass/fail `liquidity_qualified` gate and the strict checklist's turnover bar, BOTH unaffected by this weight change |
+
+**Revision history:**
+- **1st** (initial build): OBV 30 / RS 20 / MACD 10 / Trend 20 / Earnings 20 — all five components untested
+- **2nd** (your post-analysis call, before any backtest existed): MACD and Trend dropped entirely, OBV 40 / RS 25 / Near-52w-High 15 (promoted from a binary flag) / Earnings 10 / Liquidity 10 (promoted from gate-only to also scored)
+- **3rd** (24-06-2026, driven by the first real backtest on this tier — see below): OBV 40→25, RS 25→40 (swapped, based on which one actually backtested better), Near-52w-High 15→20, Liquidity 10→5, Earnings unchanged at 10
 
 **Real bug caught and fixed during testing (still applies to this
 revision):** the first version combined components with a plain weighted
@@ -673,14 +675,49 @@ after any future change to `compute_smallmicro_score` or the strict
 checklist, to catch a wiring break before running the real (much slower,
 quota-costing) backtest.
 
-**Treat `smallmicro_score` as a research starting point, not yet a
-trading signal.** None of this has been backtested — not the weights, not
-the liquidity threshold, not the indicators' predictive value on this
-tier. Before trusting it the way NSE500/SP500's scores are trusted, it
-needs its own walk-forward backtest run separately (same methodology as
-`backtest.py`) — small/microcap stocks behave differently across market
-cycles than the large/mid-cap names the existing backtest evidence
-actually covers.
+**First real run (24-06-2026)** — the result that drove the 3rd weight
+revision above:
+
+| Signal | n | 12m excess vs benchmark | 12m hit rate |
+|---|---|---|---|
+| `smallmicro_rs_top_decile` | 410 | **+38.27pp** | 69.5% |
+| `smallmicro_strict_pass` | 351 | +38.04pp | 69.2% |
+| `smallmicro_obv_top_decile` | 2,626 | +26.68pp | 66.3% |
+| `smallmicro_near_52w_high` | 2,325 | +25.97pp | 69.1% |
+| `smallmicro_score_above_70` | 1,726 | +25.85pp | 63.6% |
+| `smallmicro_score_above_50` | 3,564 | +25.27pp | 65.9% |
+| `baseline_all_smallmicro` | 3,999 | +23.61pp | 65.8% |
+| `smallmicro_high_liquidity` | 410 | +1.14pp | 48.7% |
+| `smallmicro_earnings_accelerating` | 0 | — (untested, see above) | — |
+
+Every signal except `smallmicro_high_liquidity` clearly beat the
+do-nothing baseline — the system as a whole works directionally. The two
+things that stood out enough to act on immediately: RS beat OBV outright
+(not just "also worked"), and liquidity as a *scored* component showed
+essentially no edge — a 48.7% hit rate is *worse* than coin-flip, the only
+signal in the table to fall below 50%. Both fed directly into the 3rd
+revision weights above. `smallmicro_strict_pass`'s strong result is
+probably substantially carried by its RS-top-decile requirement (one of
+its four conditions) rather than equal contribution from all four — worth
+keeping in mind when reading it as a single number.
+
+**This is one run, not two.** OBV's NSE500/SP500 trust was earned by
+holding up across *two* separate backtests with more data the second time
+(+3.2pp→+4.1pp at 3mo). Nothing here has cleared that bar yet — these
+weights reflect the best available evidence today, not a settled
+conclusion. Re-run this backtest periodically (e.g. after `BACKTEST_UNIVERSE`
+changes, or on a longer lookback once one's available) and compare against
+this table before trusting the ranking further, the same way OBV's
+NSE500/SP500 result was cross-checked a second time before being relied on.
+
+**Treat `smallmicro_score` as a research starting point, not yet a fully
+trusted trading signal**, even with real backtest evidence now behind
+some of it. The weights above reflect one confirming run each, not the
+two-run standard the rest of this system holds itself to; the liquidity
+threshold (`config.MIN_AVG_DAILY_TRADED_VALUE_INR`) and strict-checklist
+turnover bar (`config.SMALLMICRO_STRICT_MIN_TURNOVER_INR`) both remain
+entirely unvalidated guesses; and Earnings Acceleration's real-world
+predictive value on this tier is still completely untested either way.
 
 ## Chart Study Additions — Trend Death + OBV-Price Divergence
 

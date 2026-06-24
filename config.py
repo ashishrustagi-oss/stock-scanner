@@ -99,20 +99,39 @@ LIQUIDITY_DATA_QUALITY_MIN_DAYS = 10          # need at least this many real tra
 # SmallMicroScore component weights (must sum to 100). No shareholding
 # weight exists here (NSE_SMALLMICRO never gets MF/FII data — see README).
 #
-# 2nd revision (your own post-analysis call): MACD and Trend dropped
-# entirely, OBV and RS pushed higher, Near-52-Week-High promoted from a
-# binary flag to its own weighted component, Liquidity promoted from
-# gate-only to also being scored. These specific values are your explicit
-# call, not a derived or backtested split — still carries the same
-# UNVALIDATED status as everything else in this block until this tier gets
-# its own walk-forward backtest.
+# 3rd revision (24-06-2026), driven by the FIRST real backtest evidence on
+# this tier (Backtest_Results_SmallMicro, n=2,626 OBV / n=410 RS / n=2,325
+# near-52w-high / n=410 liquidity at the 12m horizon):
+#   - RS (smallmicro_rs_top_decile) was the strongest single component:
+#     +38.27pp excess at 12m — beat OBV's +26.68pp by ~12pp. Weights
+#     swapped to match: OBV 40->25, RS 25->40.
+#   - smallmicro_near_52w_high was the 2nd-strongest: +25.97pp excess,
+#     clean monotonic hit-rate climb across horizons. Weight raised 15->20.
+#   - smallmicro_high_liquidity showed ~zero predictive value as a SCORED
+#     component: +1.14pp excess at 12m, hit rate 48.7% (below 50%) — a real
+#     disappointment relative to the others. Weight cut 10->5 rather than
+#     to 0, since one backtest run isn't (yet) the two-run standard of
+#     evidence OBV earned on NSE500/SP500 before being trusted there; this
+#     is a partial response to a real but still single data point, not a
+#     full reversal. NOTE: this is the SCORED liquidity component only —
+#     liquidity_qualified (the scoring-eligibility floor) and the strict
+#     checklist's turnover bar are both UNAFFECTED by this change.
+#   - smallmicro_earnings_accelerating showed n=0 — earnings acceleration
+#     isn't historically reconstructed in the backtest (see backtest.py /
+#     README), so this component remains untested either way. Left
+#     unchanged at 10 pending real evidence either direction.
+# Still carries the same UNVALIDATED status as every prior revision until
+# this tier has TWO backtest runs confirming the same direction, the
+# standard OBV itself had to meet on NSE500/SP500 before being trusted.
 SMALLMICRO_SCORE_WEIGHTS = {
-    "obv_leadership": 40,      # obv_52w_range_pct — your most-trusted signal on NSE500/SP500;
-                               # NOT yet proven on this tier, weighted highest on a hypothesis, not evidence
-    "rs": 25,                  # rs_score vs Nifty 50, percentile-ranked within this universe
-    "near_52w_high": 15,       # pct_from_52w_high, inverted + percentile-ranked (closer to high = higher score)
-    "earnings_acceleration": 10,  # earnings_acceleration_score, rescaled to this tier's 0-100 share
-    "liquidity": 10,           # avg_daily_traded_value, percentile-ranked within this universe
+    "obv_leadership": 25,      # obv_52w_range_pct — outperformed by RS in the first SmallMicro backtest;
+                               # demoted from 40, but still meaningfully weighted pending a 2nd confirming run either way
+    "rs": 40,                  # rs_score vs Nifty 50, percentile-ranked within this universe —
+                               # strongest single component in the first backtest (+38.27pp excess at 12m, n=410)
+    "near_52w_high": 20,       # pct_from_52w_high, inverted + percentile-ranked — 2nd-strongest in the first backtest
+    "earnings_acceleration": 10,  # earnings_acceleration_score, rescaled — untested in the backtest (n=0, see above)
+    "liquidity": 5,            # avg_daily_traded_value, percentile-ranked — showed ~zero predictive value
+                               # as a scored component in the first backtest; cut but not removed
 }
 assert sum(SMALLMICRO_SCORE_WEIGHTS.values()) == 100, "SMALLMICRO_SCORE_WEIGHTS must sum to 100"
 
