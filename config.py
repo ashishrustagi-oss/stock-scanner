@@ -308,7 +308,7 @@ EARNINGS_ACCELERATING_TAB_TOP_N = 30             # how many stocks the EARNINGS_
 # Widen these only after confirming a smaller run completes in reasonable
 # time. Run manually via backtest_workflow.yml, never as part of daily scan.
 # ════════════════════════════════════════════════════════════════════════════
-BACKTEST_UNIVERSE = "NSE_SmallMicro"          # "NSE500", "SP500", or "NSE_SmallMicro" — one at a time
+BACKTEST_UNIVERSE = "NSE500"          # "NSE500", "SP500", or "NSE_SmallMicro" — one at a time
 BACKTEST_MAX_TICKERS = 300            # None = full universe (slow); widened from 100 after a clean 7m43s test run
 BACKTEST_LOOKBACK_YEARS = 3           # how far back snapshot dates go
 BACKTEST_SNAPSHOT_FREQ = "MS"         # "MS" = monthly (1st of month); "W" = weekly (much slower)
