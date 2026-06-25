@@ -329,6 +329,20 @@ OBV_SLOPE_SHORT_WINDOW = 20
 OBV_SLOPE_LONG_WINDOW = 50
 OBV_SLOPE_VERY_LONG_WINDOW = 200   # ~1y trading days; added to mirror the Pine Script dashboard's 3rd OBV slope window
 
+# ----------------------------------------------------------------------------
+# OBV Acceleration / Quiet Base — chart-study signal (25-06-2026), NOT
+# statistically validated. See indicators.obv_acceleration_quiet_base()'s
+# docstring for the full pattern this catches (built from reviewing
+# Redington, RR Kabel, and HDFC AMC charts) and README for how it's wired
+# in. Deliberately separate from composite_score/EliteCompounderScore/
+# smallmicro_score — this is meant to flag candidates EARLIER than those
+# scores typically do, at the cost of being unvalidated and presumably
+# lower hit-rate. Both numbers below are UNVALIDATED starting defaults —
+# no backtest exists for this signal yet — tune freely after seeing real
+# output, same status as MIN_SALES_CAGR/MIN_ROCE/MIN_AVG_DAILY_TRADED_VALUE_INR.
+OBV_ACCELERATION_RATIO_THRESHOLD = 2.0    # short-term OBV slope must be >= this many times the long-term baseline slope
+OBV_ACCELERATION_PRICE_FLAT_BAND_PCT = 8.0  # price's own % change over the short window must stay within +/- this to count as "quiet"
+
 MACD_FAST, MACD_SLOW, MACD_SIGNAL = 12, 26, 9
 
 SUPERTREND_SLOW = dict(period=10, multiplier=3)

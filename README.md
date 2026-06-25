@@ -746,9 +746,56 @@ much price has fallen. Positive = bullish (OBV held up better than price).
 least 5% (a stock that hasn't pulled back has nothing to diverge from) and
 the divergence exceeds 10 percentage points.
 
-**Honest framing:** both of these came from reading 8-9 winning charts
-visually, not from a statistical backtest. See the next section for the
-actual rigorous validation tool.
+### OBV Acceleration / Quiet Base (25-06-2026)
+From reviewing Redington, RR Kabel, and HDFC AMC charts: in each case, OBV
+was quietly, steadily climbing for an extended stretch while price chopped
+sideways or drifted down — and the tell that price was about to catch up
+wasn't just "OBV is rising," it was a further **acceleration** in that
+already-rising OBV slope, arriving before price moved. The underlying
+motivation: by the time `composite_score`/`smallmicro_score` are at their
+highest, this move has usually already happened — those scores are
+backward-looking confirmations of strength already accumulated, not
+predictions of strength about to begin. This signal is deliberately built
+to be earlier instead, at the cost of being unvalidated and presumably
+lower hit-rate / worse risk-reward than the validated scores — that's the
+explicit tradeoff being made, not an oversight.
+
+Two conditions, **both** required (`indicators.obv_acceleration_quiet_base()`):
+1. **Acceleration** — the ~13-week (`obv_slope_13w`) OBV slope is at least
+   `config.OBV_ACCELERATION_RATIO_THRESHOLD` (default 2.0x) the ~26-week
+   (`obv_slope_26w`) baseline slope. Sign-aware: a short slope that's
+   *more negative* than the long baseline (selling accelerating) is
+   explicitly excluded — verified directly, not just assumed, since a
+   naive ratio on two negative numbers could otherwise flag accelerating
+   selling as if it were the bullish pattern.
+2. **Quiet base** — price hasn't moved much yet: `price_chg_13w` (raw %
+   change over the same ~13-week window) is within
+   `config.OBV_ACCELERATION_PRICE_FLAT_BAND_PCT` (default ±8%) of flat.
+   Without this, the signal would just be confirming a move that's
+   already visible to everyone, not catching it early — that's the whole
+   point of the "quiet base" requirement.
+
+New columns: `price_chg_13w`, `obv_acceleration_quiet_base` (🟢 flag),
+`obv_acceleration_basis` — the basis column is diagnostic, same pattern as
+`smallmicro_strict_fail_reasons`: `"accelerating_quiet_base"` (both
+conditions met), `"accelerating_but_price_moved"` (accelerating, but price
+already ran — the move you'd have wanted to catch earlier),
+`"quiet_but_not_accelerating"` (price is quiet, but OBV isn't speeding up),
+`"neither"`, or `"insufficient_data"`.
+
+Both windows (`obv_slope_13w`/`obv_slope_26w`) were already computed for
+every stock by the OBV Leadership module — no new lookback windows were
+added, this signal is built entirely from existing infrastructure.
+
+**Honest framing:** all three of these chart-study additions came from
+reading a handful of winning charts visually, not from a statistical
+backtest. See the next section for the actual rigorous validation tool —
+and note that `obv_acceleration_quiet_base` in particular has not been
+backtested even once yet (unlike `obv_52w_high`/OBV leadership, which has
+two confirming runs behind it). Treat a 🟢 here as a research lead worth a
+closer manual look, not a trading signal, until it's been through
+`backtest.py`'s walk-forward methodology the same way every other trusted
+signal in this system was.
 
 ## Backtest Framework — rigorous signal validation, not chart-reading
 

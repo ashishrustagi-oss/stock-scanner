@@ -57,6 +57,20 @@ def build_metrics_row(
     atr_comp_ratio = ind.atr_compression_ratio(df, config.ATR_PERIOD, config.VOLATILITY_COMPRESSION_LOOKBACK_DAYS)
     atr_comp_pctile = ind.atr_compression_percentile(df, config.ATR_PERIOD, config.VOLATILITY_COMPRESSION_LOOKBACK_DAYS)
 
+    obv_slope_13w_val = ind.obv_slope(obv_series, config.WEEKS_13_IN_DAYS)
+    obv_slope_26w_val = ind.obv_slope(obv_series, config.WEEKS_26_IN_DAYS)
+    price_chg_13w = ind.price_pct_change(close, config.WEEKS_13_IN_DAYS)
+    # Chart-study signal (NOT statistically validated, see indicators.py
+    # docstring + README): short = ~13w/3mo OBV slope, long = ~26w/6mo
+    # baseline, per your own chart review of Redington/RR Kabel/HDFC AMC —
+    # you specified "2-3 months" for the short window, which maps to the
+    # already-computed 13-week slope rather than the 20-day one originally
+    # assumed; no new OBV windows needed, both already existed.
+    obv_accel = ind.obv_acceleration_quiet_base(
+        obv_slope_13w_val, obv_slope_26w_val, price_chg_13w,
+        config.OBV_ACCELERATION_RATIO_THRESHOLD, config.OBV_ACCELERATION_PRICE_FLAT_BAND_PCT,
+    )
+
     row = {
         "yf_ticker":              yf_ticker,
         "close":                  float(close.iloc[-1]),
@@ -69,9 +83,14 @@ def build_metrics_row(
         # ── OBV Leadership module ──
         "obv_52w_high":           ind.is_at_nbar_high(obv_series, config.WEEKS_52_IN_DAYS),
         "obv_26w_high":           ind.is_at_nbar_high(obv_series, config.WEEKS_26_IN_DAYS),
-        "obv_slope_13w":          ind.obv_slope(obv_series, config.WEEKS_13_IN_DAYS),
-        "obv_slope_26w":          ind.obv_slope(obv_series, config.WEEKS_26_IN_DAYS),
+        "obv_slope_13w":          obv_slope_13w_val,
+        "obv_slope_26w":          obv_slope_26w_val,
         "obv_price_divergence":   ind.obv_price_divergence(close, obv_series),
+        # ── OBV Acceleration / Quiet Base (chart-study, unvalidated — see
+        # indicators.obv_acceleration_quiet_base() and README) ──
+        "price_chg_13w":          price_chg_13w,
+        "obv_acceleration_quiet_base": "🟢" if obv_accel["qualifies"] else "",
+        "obv_acceleration_basis": obv_accel["basis"],
         # ── Liquidity (built for the NSE Small/Micro-cap tier's score gate —
         # see scoring.py compute_smallmicro_score; NSE500/SP500 never needed
         # this since every constituent there is liquid by default) ──

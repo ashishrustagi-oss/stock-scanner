@@ -264,6 +264,8 @@ DISPLAY_COLUMNS = [
     # Chart study additions
     "macd_early_bearish", "trend_death_flag", "trend_death_score",
     "obv_price_divergence", "obv_leadership_rank",
+    # OBV Acceleration / Quiet Base (chart-study, unvalidated — see README)
+    "price_chg_13w", "obv_acceleration_quiet_base", "obv_acceleration_basis",
 ]
 
 # Raw + SmallMicroScore tier — NSE_SmallMicro. Deliberately excludes
@@ -289,6 +291,9 @@ RAW_DISPLAY_COLUMNS = [
     # OBV
     "obv_slope_20d", "obv_slope_50d", "obv_slope_200d", "obv_52w_range_pct",
     "obv_52w_high", "obv_26w_high", "obv_price_divergence",
+    "obv_slope_13w", "obv_slope_26w",
+    # OBV Acceleration / Quiet Base (chart-study, unvalidated — see README)
+    "price_chg_13w", "obv_acceleration_quiet_base", "obv_acceleration_basis",
     # MACD (daily/weekly/monthly)
     "daily_macd", "daily_signal", "daily_hist", "macd_early_bullish", "macd_early_bearish",
     "weekly_macd", "weekly_signal", "weekly_hist", "weekly_macd_positive",

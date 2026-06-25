@@ -334,6 +334,22 @@ def rs_pct_change(rs_series: pd.Series, window: int) -> float:
     return float((new / old - 1) * 100)
 
 
+def price_pct_change(close: pd.Series, window: int) -> float:
+    """
+    % change in raw closing price over the trailing `window` bars. Same
+    shape as rs_pct_change() above, just on price instead of the RS ratio —
+    built for obv_acceleration_quiet_base() below, which needs a plain
+    "has price actually moved yet" check, not a vs-index comparison.
+    """
+    s = close.dropna()
+    if len(s) < window + 1:
+        return np.nan
+    old, new = s.iloc[-window - 1], s.iloc[-1]
+    if old == 0 or np.isnan(old):
+        return np.nan
+    return float((new / old - 1) * 100)
+
+
 # ----------------------------------------------------------------------------
 # Early MACD bullish crossover (still below the zero line — the early phase)
 # ----------------------------------------------------------------------------
@@ -410,6 +426,86 @@ def obv_price_divergence(close: pd.Series, obv_series: pd.Series, window: int = 
     obv_decline_pct = (current_obv - peak_obv) / abs(peak_obv) * 100
 
     return float(obv_decline_pct - price_decline_pct)
+
+
+def obv_acceleration_quiet_base(
+    obv_slope_short: float, obv_slope_long: float, price_chg_short: float,
+    accel_ratio_threshold: float, price_flat_band_pct: float,
+) -> dict:
+    """
+    Chart-study-derived signal (NOT statistically validated — same epistemic
+    status as obv_price_divergence/Trend Death; see README): catches the
+    pattern visible on real charts (Redington, RR Kabel, HDFC AMC, per
+    24-06-2026 chart review) where OBV has been quietly, steadily rising
+    while price chops sideways or drifts down — and the tell that price is
+    about to catch up is a further ACCELERATION in that already-rising OBV
+    slope, not just OBV being positive. By the time composite_score/
+    smallmicro_score are at their highest, this move has usually already
+    happened — those are backward-looking confirmations of strength
+    already accumulated, not predictions of strength about to begin. This
+    signal is deliberately built to be early instead, at the cost of being
+    unvalidated and presumably lower hit-rate / lower risk-reward than the
+    validated scores — that tradeoff is the whole point, not an oversight.
+
+    Two conditions, BOTH required:
+      1. ACCELERATION: short-term OBV slope (intended as ~13-week/3-month,
+         e.g. obv_slope_13w) is at least `accel_ratio_threshold`x the
+         long-term baseline slope (intended as ~26-week/6-month, e.g.
+         obv_slope_26w) — accumulation speeding up relative to its own
+         recent history, not just "OBV is rising." Sign-aware: a
+         meaningfully-more-positive short slope counts; a short slope
+         that's LESS negative than a negative long slope (i.e. selling
+         pressure easing) is treated as a weaker, separate case — flagged
+         distinctly below rather than conflated with genuine acceleration.
+      2. QUIET BASE: price hasn't moved much yet over a comparable recent
+         window (price_chg_short, the same ~13-week/3-month window as the
+         short OBV slope) — within `price_flat_band_pct` of flat. This is
+         the "price hasn't caught up to the OBV story yet" condition from
+         the chart examples; without it, this would just be confirming a
+         move that's already visible to everyone, not catching it early.
+
+    Returns a dict (not a single bool) so the caller/sheet can distinguish
+    WHY a stock didn't qualify, the same diagnostic-transparency pattern
+    used in smallmicro_strict_fail_reasons:
+      - "qualifies": True/False
+      - "basis": one of "accelerating_quiet_base" (both conditions met),
+        "accelerating_but_price_moved" (condition 1 only),
+        "quiet_but_not_accelerating" (condition 2 only),
+        "neither", or "insufficient_data" (any input was NaN)
+    """
+    if any(pd.isna(v) for v in (obv_slope_short, obv_slope_long, price_chg_short)):
+        return {"qualifies": False, "basis": "insufficient_data"}
+
+    # Sign-aware acceleration check. Using abs() on a SAME-SIGN pair is the
+    # straightforward "is short steeper than long" case (positive vs
+    # positive: genuinely accelerating upward accumulation — the chart-study
+    # pattern). A short slope that's positive while long is negative (or
+    # zero) is the clearest, strongest form of this and is naturally caught
+    # by the same ratio test once long is small/negative. A short slope
+    # that's MORE negative than long (selling accelerating) should NOT
+    # qualify — guarded against explicitly, since a naive abs()-ratio could
+    # otherwise flag accelerating SELLING as if it were the bullish pattern.
+    if obv_slope_short <= 0:
+        is_accelerating = False
+    elif obv_slope_long <= 0:
+        # Short slope positive, long slope flat/negative — short clearing a
+        # near-zero-or-negative baseline counts as accelerating outright.
+        is_accelerating = True
+    else:
+        is_accelerating = (obv_slope_short / obv_slope_long) >= accel_ratio_threshold
+
+    is_quiet = abs(price_chg_short) <= price_flat_band_pct
+
+    if is_accelerating and is_quiet:
+        basis = "accelerating_quiet_base"
+    elif is_accelerating:
+        basis = "accelerating_but_price_moved"
+    elif is_quiet:
+        basis = "quiet_but_not_accelerating"
+    else:
+        basis = "neither"
+
+    return {"qualifies": is_accelerating and is_quiet, "basis": basis}
 
 
 # ----------------------------------------------------------------------------
