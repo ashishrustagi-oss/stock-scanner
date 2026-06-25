@@ -798,52 +798,89 @@ happening on the chart. Same motivation as the acceleration signal above,
 inverted: this is meant to catch exhaustion *before* price itself rolls
 over, not after.
 
-**Design history worth knowing before changing this further:** the first
-attempt at this signal checked whether `obv_price_divergence` (the
-existing peak-anchored metric) had been positive recently and was now
-fading. Built, then tested directly against constructed synthetic data
-before being trusted — and found NOT to work: a divergence measured
-against a single, increasingly-distant 52-week peak is dominated by the
-*cumulative* effect since that peak and barely responds to genuinely
-recent dynamics. In testing, it returned "a cushion existed recently" as
-`True` for almost any stock sitting below its 52-week high with
-generally-rising OBV — which describes a huge fraction of real stocks,
-so it wasn't actually discriminating anything. Replaced with the approach
-below, which compares OBV slope to **its own recent trajectory** instead —
-verified directly against a constructed OBV-peaks-then-decelerates-while-
-price-still-rises scenario (slope traced a clean 0.40 → 0.02 decline while
-price's rolling % change stayed solidly positive throughout) before being
-trusted.
+**Design history worth knowing before changing this further — TWO real
+problems were found and fixed here, both via direct testing rather than
+assumption:**
 
-Two conditions, **both** required (`indicators.obv_divergence_decaying()`):
-1. **OBV slope has decayed from its own recent high** — `obv_slope_42d`
-   (current ~2-month slope) divided by `obv_slope_42d_recent_high` (the
-   highest that same 42-day slope reached at any point in the trailing
-   `config.OBV_DIVERGENCE_DECAY_LOOKBACK_DAYS`, default 150 days, via the
-   new `indicators.obv_slope_series()` rolling helper) is at or below
-   `config.OBV_DIVERGENCE_DECAY_SLOPE_RATIO_THRESHOLD` (default 0.5 — slope
-   has fallen to half or less of its own recent peak). Only counted when
-   that recent high itself cleared `config.OBV_DIVERGENCE_DECAY_MIN_RECENT_HIGH_PCT`
-   (default 0.3%) — a stock whose OBV slope was never strongly positive
-   has nothing real to have decayed *from*.
-2. **Price is still rising** — `price_chg_42d` (raw % change over the same
-   ~2-month window) is at or above
-   `config.OBV_DIVERGENCE_DECAY_PRICE_RISING_THRESHOLD_PCT` (default 3.0%).
-   This is specifically for stocks that *look* fine (price still
+**1st attempt** checked whether `obv_price_divergence` (the existing
+peak-anchored metric) had been positive recently and was now fading.
+Tested against synthetic data and found NOT to work: a divergence measured
+against a single, increasingly-distant 52-week peak is dominated by the
+*cumulative* effect since that peak and barely responds to recent
+dynamics — it returned "a cushion existed recently" as `True` for almost
+any stock below its 52-week high with generally-rising OBV.
+
+**2nd attempt** replaced that with a single-point comparison: today's
+`obv_slope_42d` vs. one fixed peak (`obv_slope_42d_recent_high`) across the
+whole 150-day lookback. This shipped, then a real backtest run (NSE500,
+26-06-2026, n=2,074 baseline) showed it barely added anything: the
+compound signal's 12m excess return (+26.34pp) was nearly identical to its
+own "price rising" sub-condition alone (+25.55pp) — the "OBV decayed"
+condition wasn't discriminating. Diagnosed directly against a realistic
+synthetic universe: **~80% of all stocks** satisfied that single-point
+ratio at any given moment, since OBV slope is naturally noisy and dips
+below half its own historical peak constantly from normal variation, not
+just during genuine decay. Even tightening to `slope <= 0` only got to
+51% — the comparison itself (one noisy point vs. one possibly-stale fixed
+peak) was the problem, not the threshold.
+
+**3rd attempt (current)** — see `indicators.obv_slope_sustained_decay()`:
+compares each day's slope to a **rolling** (not fixed) recent high, and
+requires the decayed ratio to hold for **most of `config.OBV_DIVERGENCE_DECAY_CONSECUTIVE_DAYS`
+consecutive days**, not just today. Confirmed via the same synthetic
+universe: this cuts the false-positive rate from ~80% down to roughly
+single digits.
+
+**A second bug surfaced building the 3rd attempt**, also worth knowing:
+the first version of the sustained-decay check required ALL N consecutive
+days to individually satisfy the ratio with zero tolerance. Tested against
+a textbook-clean, genuinely-decaying synthetic slope (falling steadily and
+linearly for 100 days) — and it **failed to flag it**, because a real
+decay transition is gradual: even a clean case only spends part of a
+20-day window already below the 0.5 ratio threshold (the transition
+itself takes time to complete), so requiring literally every day broke on
+an obviously-correct case. Fixed two ways: `min_fraction_required`
+(default 90%, not 100%) tolerates a handful of borderline days without
+breaking the streak, and the window itself was shortened from 20 to 15
+consecutive days, since 20 was found to span more of the *transition*
+period (still partly above threshold) than the *settled* decayed state.
+Both fixes verified directly against the same clean-decay case before
+being trusted, not just reasoned about.
+
+Three conditions, **all required** (`indicators.obv_divergence_decaying()`
++ `obv_slope_sustained_decay()`):
+1. **Sustained decay** — OBV's `obv_slope_42d` has been at or below
+   `config.OBV_DIVERGENCE_DECAY_SLOPE_RATIO_THRESHOLD` (default 0.5) of
+   its own **rolling** recent high (max over the trailing
+   `config.OBV_DIVERGENCE_DECAY_ROLLING_HIGH_WINDOW`, default 20 days,
+   recomputed at every point — not one fixed historical peak) for at least
+   `config.OBV_DIVERGENCE_DECAY_MIN_FRACTION_REQUIRED` (default 90%) of
+   the trailing `config.OBV_DIVERGENCE_DECAY_CONSECUTIVE_DAYS` (default
+   15) days.
+2. **A real peak existed to decay from** — the rolling high itself
+   cleared `config.OBV_DIVERGENCE_DECAY_MIN_RECENT_HIGH_PCT` (default
+   0.3%) for most of that same window — a stock whose OBV slope was never
+   strongly positive has nothing real to have decayed *from*.
+3. **Price is still rising** — `price_chg_42d` (raw % change over the
+   same ~2-month window) is at or above
+   `config.OBV_DIVERGENCE_DECAY_PRICE_RISING_THRESHOLD_PCT` (default
+   3.0%). This is specifically for stocks that *look* fine (price still
    climbing) while the underlying volume support has already started
    fading — not for stocks that have already turned down, which is a
    different, more obvious problem this signal isn't trying to catch early.
 
-New columns: `obv_slope_42d`, `obv_slope_42d_recent_high`, `price_chg_42d`,
+New columns: `obv_slope_42d`, `obv_slope_42d_recent_high`,
+`obv_decay_current_ratio` (today's slope ÷ today's rolling high — shown
+for context even when the sustained check fails), `price_chg_42d`,
 `obv_divergence_decaying` (🔴 flag — not 🟢, matching the same convention
 Trend Death uses to stay visually distinct as a warning rather than an
 opportunity), `obv_divergence_decay_basis` — same diagnostic-transparency
-pattern as the rest of this system: `"divergence_decaying"` (both
-conditions met), `"obv_still_strong"` (price rising, but OBV slope hasn't
-actually decayed from its own recent high yet), `"price_not_rising"` (OBV
-has decayed, but price isn't rising — not the pattern this flag is for),
-`"no_peak_to_decay_from"` (OBV's own recent high was never meaningfully
-positive — nothing to fade from), or `"insufficient_data"`.
+pattern as the rest of this system: `"divergence_decaying"` (all 3
+conditions met), `"obv_still_strong"` (price rising, but OBV hasn't shown
+sustained decay), `"price_not_rising"` (OBV has sustained-decayed, but
+price isn't rising — not the pattern this flag is for), or
+`"no_peak_to_decay_from"` (OBV's slope was never meaningfully positive —
+nothing to fade from).
 
 **Honest framing:** all four of these chart-study additions came from
 reading a handful of winning charts visually, not from a statistical

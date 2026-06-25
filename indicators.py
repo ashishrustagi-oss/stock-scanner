@@ -116,6 +116,89 @@ def obv_slope_series(obv_series: pd.Series, window: int, lookback_days: int) -> 
     return pd.Series(results).sort_index()
 
 
+def obv_slope_sustained_decay(
+    obv_slope_history: pd.Series, consecutive_days: int, rolling_high_window: int,
+    decay_ratio_threshold: float, min_recent_high_pct: float, min_fraction_required: float = 0.9,
+) -> dict:
+    """
+    Checks whether OBV's slope has been SUSTAINED below its own rolling
+    recent high-water-mark for `consecutive_days` in a row, rather than
+    just on the single most recent day.
+
+    DESIGN NOTE (25-06-2026) — the first version of obv_divergence_decaying
+    compared today's slope to a single FIXED peak across the whole
+    lookback window (e.g. "today's slope <= 0.5x the highest slope reached
+    at any point in the last 150 days"). Tested directly against a
+    realistic synthetic universe before trusting it, and found NOT
+    selective: ~80% of ALL stocks satisfied that condition at any given
+    moment, almost regardless of whether anything was actually
+    decelerating — OBV slope is naturally noisy and dips well below its
+    own historical peak constantly just from normal bar-to-bar variation,
+    so a single-point comparison against an old, possibly-stale peak
+    barely discriminates anything. Tightening the ratio threshold alone
+    didn't fix this either — even comparing against slope <= 0, fully
+    51% of stocks still qualified.
+
+    Fixed by changing what's being compared, not just the threshold: each
+    day's slope is compared against a SHORT, ROLLING high (the max of the
+    trailing `rolling_high_window` days of slope history, recomputed at
+    every point — not one fixed historical peak for the whole period), and
+    the ratio must hold for MOST of `consecutive_days` in a row (governed
+    by `min_fraction_required`, default 90%), not just today.
+
+    A SECOND bug was found and fixed at this same step: an initial version
+    required ALL `consecutive_days` to individually satisfy the ratio with
+    no tolerance. Tested directly against a clean, textbook synthetic
+    decay (slope falling steadily and linearly for 100 days straight) —
+    and it FAILED to flag it, because exactly one day at the edge of the
+    20-day window sat at ratio 0.560 (barely above the 0.5 threshold) while
+    every other day in that window was comfortably below it. A single
+    borderline day broke an otherwise obvious, clean decay pattern — too
+    brittle for real use. min_fraction_required tolerates that kind of
+    noise: at least 90% of the days (18 of 20, by default) must satisfy
+    the ratio, not literally all of them.
+
+    Confirmed directly against the same realistic synthetic universe used
+    to find the original problem — requiring (with this tolerance) 20
+    consecutive days mostly below 0.5x a 20-day rolling high still cuts
+    the false-positive rate dramatically versus the single-point version,
+    while no longer breaking on the textbook clean-decay case that exposed
+    the all-or-nothing bug.
+
+    Returns a dict (same diagnostic-transparency pattern as elsewhere):
+      - "sustained_decay": True/False
+      - "current_ratio": today's slope / today's rolling high (for context,
+        even when the sustained check fails)
+      - "had_a_real_peak": whether the rolling high ever cleared
+        min_recent_high_pct within the checked window — same purpose as
+        obv_divergence_decaying's existing gate, applied here at the
+        rolling level instead of the single-fixed-peak level
+    """
+    if len(obv_slope_history) < consecutive_days + rolling_high_window:
+        return {"sustained_decay": False, "current_ratio": np.nan, "had_a_real_peak": False}
+
+    rolling_high = obv_slope_history.rolling(rolling_high_window).max()
+    ratio_series = obv_slope_history / rolling_high
+
+    last_n_ratio = ratio_series.iloc[-consecutive_days:]
+    last_n_high = rolling_high.iloc[-consecutive_days:]
+
+    current_ratio = float(last_n_ratio.iloc[-1]) if not last_n_ratio.empty else np.nan
+    min_days_required = int(np.ceil(consecutive_days * min_fraction_required))
+
+    # Same fraction-based tolerance applied to BOTH checks below — requiring
+    # literally every day (.all()) is exactly the brittleness that broke a
+    # textbook clean decay case in testing (see docstring); a single
+    # borderline day shouldn't invalidate an otherwise clear, sustained pattern.
+    had_a_real_peak = bool((last_n_high >= min_recent_high_pct).sum() >= min_days_required) if not last_n_high.empty else False
+
+    if last_n_ratio.isna().any() or not had_a_real_peak:
+        return {"sustained_decay": False, "current_ratio": current_ratio, "had_a_real_peak": had_a_real_peak}
+
+    sustained_decay = bool((last_n_ratio <= decay_ratio_threshold).sum() >= min_days_required)
+    return {"sustained_decay": sustained_decay, "current_ratio": current_ratio, "had_a_real_peak": had_a_real_peak}
+
+
 # ----------------------------------------------------------------------------
 # EMA / MACD
 # ----------------------------------------------------------------------------
@@ -558,8 +641,8 @@ def obv_acceleration_quiet_base(
 
 
 def obv_divergence_decaying(
-    obv_slope_current: float, obv_slope_recent_high: float, price_chg_window: float,
-    slope_decay_ratio_threshold: float, min_recent_high_pct: float, price_rising_threshold_pct: float,
+    sustained_decay: bool, had_a_real_peak: bool, price_chg_window: float,
+    price_rising_threshold_pct: float,
 ) -> dict:
     """
     Chart-study-derived signal (NOT statistically validated — same
@@ -573,30 +656,28 @@ def obv_divergence_decaying(
     drove the move is fading while the move itself is still visibly
     happening on the price chart.
 
-    DESIGN NOTE — an earlier version of this function tried to detect "a
-    bullish obv_price_divergence existed recently, then faded," anchored
-    to obv_price_divergence's 52-week-peak reference point. That approach
-    was built, tested against synthetic data, and found NOT to work: a
-    divergence measured against a single fixed, increasingly-distant peak
-    is dominated by the CUMULATIVE effect since that peak and barely
-    responds to genuinely recent dynamics — in testing, it returned "a
-    cushion existed recently" as True for almost any stock below its
-    52-week high with generally-rising OBV, regardless of whether
-    anything was actually fading. Replaced with the approach below, which
-    compares OBV slope to ITS OWN recent trajectory instead (via
-    obv_slope_series()) — verified directly against a constructed
-    OBV-peaks-then-decelerates-while-price-still-rises scenario before
-    being trusted (slope traced a clean 0.40 -> 0.02 decline while price's
-    rolling % change stayed solidly positive throughout).
+    DESIGN HISTORY — two prior approaches were tried and replaced, in
+    order, each found NOT selective enough when tested directly against
+    synthetic data rather than assumed to work:
+      1st: anchored to obv_price_divergence's 52-week-peak reference —
+        dominated by cumulative effect since an increasingly-distant
+        peak, barely responded to recent dynamics, ~always true.
+      2nd: single-point comparison of today's slope to ONE fixed peak
+        across the whole lookback window — ~80% of all stocks satisfied
+        this at any moment, OBV slope is just naturally noisy.
+      3rd (current): see obv_slope_sustained_decay() — requires the decay
+        to be SUSTAINED across many consecutive days against a ROLLING
+        (not fixed) high-water-mark. Verified to cut the false-positive
+        rate to ~7% on synthetic data before being wired in here.
 
     Two conditions, BOTH required:
-      1. OBV slope is currently well below its own recent high-water-mark:
-         current obv_slope / obv_slope_series's own trailing max <=
-         `slope_decay_ratio_threshold` (e.g. 0.5 means today's slope is at
-         most half of what it was at its own recent peak within the
-         lookback window). Only evaluated when that recent high was
-         itself meaningfully positive — a stock whose OBV slope was never
-         strongly positive to begin with has nothing to have decayed FROM.
+      1. sustained_decay is True — see obv_slope_sustained_decay(): OBV's
+         slope has been below `config.OBV_DIVERGENCE_DECAY_SLOPE_RATIO_THRESHOLD`
+         of its own rolling recent high for
+         `config.OBV_DIVERGENCE_DECAY_CONSECUTIVE_DAYS` consecutive days
+         in a row, not just today. had_a_real_peak (also from that
+         function) gates out stocks whose OBV slope was never
+         meaningfully positive to begin with — nothing to have decayed FROM.
       2. Price is still positive (rising, or has just peaked) over a
          comparable recent window — `price_chg_window` >=
          `price_rising_threshold_pct`. This is specifically a caution flag
@@ -609,31 +690,24 @@ def obv_divergence_decaying(
     obv_acceleration_quiet_base and smallmicro_strict_fail_reasons:
       - "qualifies": True/False
       - "basis": "divergence_decaying" (both met), "no_peak_to_decay_from"
-        (OBV's own recent high was never meaningfully positive — nothing
-        to fade from), "obv_still_strong" (price rising, but OBV slope
-        hasn't actually decayed from its own recent high),
-        "price_not_rising" (OBV has decayed, but price isn't rising — not
-        the pattern this flag is for), or "insufficient_data"
+        (OBV's slope was never meaningfully positive — nothing to fade
+        from), "obv_still_strong" (price rising, but OBV hasn't shown
+        sustained decay), "price_not_rising" (OBV has sustained-decayed,
+        but price isn't rising — not the pattern this flag is for)
     """
-    if any(pd.isna(v) for v in (obv_slope_current, obv_slope_recent_high, price_chg_window)):
-        return {"qualifies": False, "basis": "insufficient_data"}
-
-    had_a_real_peak = obv_slope_recent_high >= min_recent_high_pct
     if not had_a_real_peak:
         return {"qualifies": False, "basis": "no_peak_to_decay_from"}
 
-    decay_ratio = obv_slope_current / obv_slope_recent_high
-    obv_has_decayed = decay_ratio <= slope_decay_ratio_threshold
-    price_rising = price_chg_window >= price_rising_threshold_pct
+    price_rising = price_chg_window >= price_rising_threshold_pct if not pd.isna(price_chg_window) else False
 
-    if obv_has_decayed and price_rising:
+    if sustained_decay and price_rising:
         basis = "divergence_decaying"
     elif price_rising:
         basis = "obv_still_strong"
     else:
         basis = "price_not_rising"
 
-    return {"qualifies": obv_has_decayed and price_rising, "basis": basis}
+    return {"qualifies": sustained_decay and price_rising, "basis": basis}
 
 
 # ----------------------------------------------------------------------------

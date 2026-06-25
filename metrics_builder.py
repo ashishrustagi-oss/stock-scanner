@@ -74,18 +74,25 @@ def build_metrics_row(
     # Mirror-image CAUTION signal (chart-study, unvalidated — see
     # indicators.obv_divergence_decaying() and README): OBV's own rate of
     # accumulation already peaked and is decaying, even as price is still
-    # rising. Second design — see indicators.py's "DESIGN NOTE" in
-    # obv_divergence_decaying()'s docstring for why the first attempt
-    # (peak-anchored obv_price_divergence history) was replaced.
+    # rising. 3rd design — see indicators.py's "DESIGN HISTORY" in
+    # obv_divergence_decaying()'s docstring: two earlier single-point
+    # approaches were tried and replaced after testing showed they weren't
+    # selective (confirmed via the 26-06-2026 NSE500 backtest run, which
+    # showed the 2nd design barely differed from "price rose" alone).
     obv_slope_decay_window_val = ind.obv_slope(obv_series, config.OBV_DIVERGENCE_DECAY_WINDOW)
     obv_slope_history = ind.obv_slope_series(
         obv_series, config.OBV_DIVERGENCE_DECAY_WINDOW, config.OBV_DIVERGENCE_DECAY_LOOKBACK_DAYS,
     )
     obv_slope_recent_high_val = float(obv_slope_history.max()) if len(obv_slope_history) else np.nan
+    sustained = ind.obv_slope_sustained_decay(
+        obv_slope_history, config.OBV_DIVERGENCE_DECAY_CONSECUTIVE_DAYS,
+        config.OBV_DIVERGENCE_DECAY_ROLLING_HIGH_WINDOW,
+        config.OBV_DIVERGENCE_DECAY_SLOPE_RATIO_THRESHOLD, config.OBV_DIVERGENCE_DECAY_MIN_RECENT_HIGH_PCT,
+        config.OBV_DIVERGENCE_DECAY_MIN_FRACTION_REQUIRED,
+    )
     price_chg_decay_window = ind.price_pct_change(close, config.OBV_DIVERGENCE_DECAY_WINDOW)
     obv_decay = ind.obv_divergence_decaying(
-        obv_slope_decay_window_val, obv_slope_recent_high_val, price_chg_decay_window,
-        config.OBV_DIVERGENCE_DECAY_SLOPE_RATIO_THRESHOLD, config.OBV_DIVERGENCE_DECAY_MIN_RECENT_HIGH_PCT,
+        sustained["sustained_decay"], sustained["had_a_real_peak"], price_chg_decay_window,
         config.OBV_DIVERGENCE_DECAY_PRICE_RISING_THRESHOLD_PCT,
     )
 
@@ -116,6 +123,7 @@ def build_metrics_row(
         # visually distinct as a warning rather than an opportunity. ──
         "obv_slope_42d":                 obv_slope_decay_window_val,
         "obv_slope_42d_recent_high":     obv_slope_recent_high_val,
+        "obv_decay_current_ratio":       sustained["current_ratio"],
         "price_chg_42d":                 price_chg_decay_window,
         "obv_divergence_decaying":       "🔴" if obv_decay["qualifies"] else "",
         "obv_divergence_decay_basis":    obv_decay["basis"],

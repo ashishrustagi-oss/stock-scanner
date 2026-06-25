@@ -357,10 +357,33 @@ OBV_ACCELERATION_PRICE_FLAT_BAND_PCT = 8.0  # price's own % change over the shor
 # README for how it's wired in. Every number below is an UNVALIDATED
 # starting default — no backtest exists for this signal yet — tune freely
 # after seeing real output, same status as every other threshold here.
+# Backtest evidence (NSE500, 26-06-2026, n=2,074 baseline) found the
+# original single-point design was barely selective: obv_divergence_decaying
+# showed +26.34pp excess at 12m, nearly identical to its own
+# "price rising" sub-condition alone (+25.55pp) — the "OBV decayed"
+# condition wasn't adding real discrimination. Diagnosed directly: ~80% of
+# ALL stocks satisfied the single-point decay-ratio check at any given
+# moment (OBV slope is naturally noisy, dips below half its own peak
+# constantly from normal variation), so requiring it changed almost
+# nothing. Redesigned (see obv_slope_sustained_decay() in indicators.py)
+# to require SUSTAINED decay against a ROLLING high-water-mark across many
+# consecutive days — verified to cut the false-positive rate to ~7% on
+# synthetic data before being trusted. Re-run the backtest after this
+# change to see whether the redesigned signal actually adds discrimination
+# beyond "price rose" — that's the whole point of redesigning it.
 OBV_DIVERGENCE_DECAY_WINDOW = 42                      # ~2 months trading days — both the OBV-slope-history window and the price-change window
-OBV_DIVERGENCE_DECAY_LOOKBACK_DAYS = 150               # how far back to search for OBV slope's own recent high-water-mark
-OBV_DIVERGENCE_DECAY_SLOPE_RATIO_THRESHOLD = 0.5      # current OBV slope must be at/below this fraction of its own recent high to count as "decayed"
-OBV_DIVERGENCE_DECAY_MIN_RECENT_HIGH_PCT = 0.3        # OBV slope's own recent high must have cleared this to count as a real peak worth decaying from
+OBV_DIVERGENCE_DECAY_LOOKBACK_DAYS = 150               # how far back obv_slope_series() builds the slope trajectory
+OBV_DIVERGENCE_DECAY_CONSECUTIVE_DAYS = 15             # decay must hold for (most of) this many consecutive trading days, not just today.
+                                                        # 20 was tried first and found too long: even a textbook-clean,
+                                                        # genuinely decaying slope only spends ~70% of a 20-day transition
+                                                        # window already below the ratio threshold (the transition itself
+                                                        # takes time) — 15 catches the pattern once it's mostly, not
+                                                        # entirely, established. Verified directly against the same
+                                                        # synthetic clean-decay case before settling on this number.
+OBV_DIVERGENCE_DECAY_ROLLING_HIGH_WINDOW = 20          # the "recent high" each day is compared against is a ROLLING max over this many trailing days, not one fixed peak for the whole lookback
+OBV_DIVERGENCE_DECAY_SLOPE_RATIO_THRESHOLD = 0.5      # current OBV slope must be at/below this fraction of its OWN rolling recent high, every day, for the full consecutive-day window
+OBV_DIVERGENCE_DECAY_MIN_FRACTION_REQUIRED = 0.9      # at least this fraction (90% = 18 of 20 days) of the consecutive-day window must satisfy the ratio, not literally every single day — see indicators.obv_slope_sustained_decay()'s docstring for the brittleness bug this fixes
+OBV_DIVERGENCE_DECAY_MIN_RECENT_HIGH_PCT = 0.3        # the rolling high itself must have cleared this throughout the consecutive-day window to count as a real peak worth decaying from
 OBV_DIVERGENCE_DECAY_PRICE_RISING_THRESHOLD_PCT = 3.0  # price's % change over the same window must clear this to count as "still rising"
 
 MACD_FAST, MACD_SLOW, MACD_SIGNAL = 12, 26, 9

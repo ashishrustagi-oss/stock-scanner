@@ -267,7 +267,7 @@ DISPLAY_COLUMNS = [
     # OBV Acceleration / Quiet Base (chart-study, unvalidated — see README)
     "price_chg_13w", "obv_acceleration_quiet_base", "obv_acceleration_basis",
     # OBV Divergence Decaying (chart-study CAUTION signal, unvalidated — see README)
-    "obv_slope_42d", "obv_slope_42d_recent_high", "price_chg_42d",
+    "obv_slope_42d", "obv_slope_42d_recent_high", "obv_decay_current_ratio", "price_chg_42d",
     "obv_divergence_decaying", "obv_divergence_decay_basis",
 ]
 
@@ -298,7 +298,7 @@ RAW_DISPLAY_COLUMNS = [
     # OBV Acceleration / Quiet Base (chart-study, unvalidated — see README)
     "price_chg_13w", "obv_acceleration_quiet_base", "obv_acceleration_basis",
     # OBV Divergence Decaying (chart-study CAUTION signal, unvalidated — see README)
-    "obv_slope_42d", "obv_slope_42d_recent_high", "price_chg_42d",
+    "obv_slope_42d", "obv_slope_42d_recent_high", "obv_decay_current_ratio", "price_chg_42d",
     "obv_divergence_decaying", "obv_divergence_decay_basis",
     # MACD (daily/weekly/monthly)
     "daily_macd", "daily_signal", "daily_hist", "macd_early_bullish", "macd_early_bearish",
