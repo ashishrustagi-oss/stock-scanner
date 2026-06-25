@@ -197,6 +197,41 @@ SIGNAL_DEFINITIONS = {
     "composite_score_above_85": lambda df: df["composite_score"] > 85,
     "composite_score_below_50": lambda df: df["composite_score"] < 50,
     "baseline_all_stocks": lambda df: pd.Series(True, index=df.index),
+    # OBV Acceleration / Quiet Base (25-06-2026, chart-study, unvalidated
+    # until this backtest runs) — EARLY-ENTRY signal. The hoped-for result:
+    # POSITIVE excess return, ideally comparable to or better than
+    # obv_52w_high, since the whole premise is catching the move before
+    # that signal would have fired.
+    "obv_acceleration_quiet_base": lambda df: df["obv_acceleration_quiet_base"] == "🟢",
+    # Sub-condition isolation (same reasoning as the SmallMicroScore
+    # component-level signals below) — lets you tell whether acceleration
+    # alone, quiet-price alone, or only the combination actually predicts
+    # anything, rather than treating the compound flag as a black box.
+    "obv_accel_subcondition_only": lambda df: df["obv_acceleration_basis"].isin(
+        ["accelerating_quiet_base", "accelerating_but_price_moved"]
+    ),
+    "obv_quiet_subcondition_only": lambda df: df["obv_acceleration_basis"].isin(
+        ["accelerating_quiet_base", "quiet_but_not_accelerating"]
+    ),
+    # OBV Divergence Decaying (25-06-2026, chart-study, unvalidated until
+    # this backtest runs) — CAUTION signal. The hoped-for result is the
+    # OPPOSITE of the signals above: NEGATIVE excess return / a LOWER hit
+    # rate than baseline, since this is meant to flag stocks about to
+    # underperform, not outperform. Read this signal's results inverted
+    # from every other one in this file.
+    "obv_divergence_decaying": lambda df: df["obv_divergence_decaying"] == "🔴",
+    # Only ONE sub-condition is cleanly extractable from the basis string —
+    # "price still rising" (divergence_decaying + obv_still_strong both
+    # have price rising; price_not_rising and no_peak_to_decay_from don't).
+    # "OBV decayed regardless of price" can't cleanly be isolated this way:
+    # obv_divergence_decaying()'s branching collapses BOTH "OBV decayed,
+    # price not rising" and "OBV didn't decay, price not rising" into the
+    # same "price_not_rising" basis value once price isn't rising — the
+    # function doesn't preserve which case applies in that branch. Testing
+    # only the cleanly-isolable half rather than guessing at the other.
+    "obv_decay_price_rising_subcondition_only": lambda df: df["obv_divergence_decay_basis"].isin(
+        ["divergence_decaying", "obv_still_strong"]
+    ),
 }
 
 # SmallMicroScore signals — separate dict, used only when
@@ -221,6 +256,14 @@ SMALLMICRO_SIGNAL_DEFINITIONS = {
     "smallmicro_score_above_70": lambda df: df["smallmicro_score"] > 70,
     "smallmicro_score_above_50": lambda df: df["smallmicro_score"] > 50,
     "baseline_all_smallmicro": lambda df: pd.Series(True, index=df.index),
+    # OBV Acceleration / Quiet Base + OBV Divergence Decaying (25-06-2026,
+    # chart-study, unvalidated) — same signals as SIGNAL_DEFINITIONS above,
+    # tested here too since both are computed by build_metrics_row() for
+    # every universe, including NSE_SmallMicro. Same read-direction note:
+    # acceleration is EARLY-ENTRY (hoped-for: positive excess), divergence
+    # decaying is CAUTION (hoped-for: negative excess / lower hit rate).
+    "smallmicro_obv_acceleration_quiet_base": lambda df: df["obv_acceleration_quiet_base"] == "🟢",
+    "smallmicro_obv_divergence_decaying": lambda df: df["obv_divergence_decaying"] == "🔴",
 }
 
 

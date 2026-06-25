@@ -921,6 +921,60 @@ shows real predictive edge on real NSE/US history — that's exactly what
 running this for real will tell you, and it might show some signals here
 don't hold up as well as the chart study suggested. That's the point.
 
+### Testing the OBV Acceleration / Divergence Decaying signals (25-06-2026)
+
+`obv_acceleration_quiet_base` and `obv_divergence_decaying` (see "Chart
+Study Additions" above) were added to `SIGNAL_DEFINITIONS` and
+`SMALLMICRO_SIGNAL_DEFINITIONS` so this backtest tests them too — both are
+computed unconditionally inside `metrics_builder.build_metrics_row()`,
+so **no changes to either snapshot function were needed**, only new
+entries in the signal dictionaries (verified directly: confirmed both
+columns already exist in a fresh `build_metrics_row()` call before
+touching `backtest.py` at all).
+
+**Read these two signals' results in OPPOSITE directions from every other
+signal in this file.** `obv_acceleration_quiet_base` is an early-ENTRY
+signal — the hoped-for result is the usual one, positive excess return,
+ideally comparable to or better than `obv_52w_high` since the whole
+premise is catching the move earlier than that signal would. But
+`obv_divergence_decaying` is a CAUTION signal — a *good* result here looks
+like **negative** excess return / a **lower** hit rate than baseline,
+since it's meant to flag stocks about to underperform, not outperform.
+Reading both columns the same way would draw exactly the wrong conclusion
+from one of the two.
+
+**Sub-condition isolation, same reasoning as the SmallMicroScore
+component-level signals:** each compound flag is also tested as two
+separate halves —
+- `obv_accel_subcondition_only` (was OBV genuinely accelerating, ignoring
+  whether price stayed quiet) and `obv_quiet_subcondition_only` (was price
+  quiet, ignoring whether OBV was accelerating) — lets you tell whether
+  acceleration alone, quietness alone, or only the AND of both two is
+  actually doing the predictive work, rather than treating the compound
+  flag as a black box.
+- `obv_decay_price_rising_subcondition_only` (price was rising, regardless
+  of OBV's decay state) is the only sub-condition cleanly extractable from
+  `obv_divergence_decay_basis` for the decay signal — `obv_has_decayed`
+  on its own can't be isolated the same way, since
+  `obv_divergence_decaying()`'s branching collapses "OBV decayed, price
+  not rising" and "OBV didn't decay, price not rising" into the same
+  `"price_not_rising"` basis value once price isn't rising; the function
+  doesn't preserve which case applies in that branch. Worth knowing if
+  you ever want a cleaner OBV-decay-alone signal: that would need a small
+  change to `obv_divergence_decaying()`'s return value, not just a new
+  backtest signal definition.
+
+A standalone smoketest, `diagnostics/main_backtest_smoketest.py` (new,
+25-06-2026 — the main NSE500/SP500-style backtest path had never had one
+before, unlike the SmallMicro path's existing
+`smallmicro_backtest_smoketest.py`), exercises the full
+`compute_signals_for_snapshot` → `run_backtest` → `aggregate_results`
+pipeline against synthetic data and additionally verifies a real logical
+invariant: each compound flag's sample size must always be ≤ both of its
+own sub-conditions' sample sizes, since a stock satisfying the AND of two
+conditions must also satisfy each one individually. Confirmed directly,
+not just assumed.
+
 ## OBV Leadership Rank — backtest-driven, not chart-driven
 
 Added after running the actual backtest, not from reading charts: across
