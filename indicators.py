@@ -67,6 +67,55 @@ def obv_slope(obv_series: pd.Series, window: int) -> float:
     return float(slope / scale * 100)
 
 
+def obv_slope_series(obv_series: pd.Series, window: int, lookback_days: int) -> pd.Series:
+    """
+    Rolling version of obv_slope() above: computes what obv_slope(window)
+    WOULD HAVE BEEN as-of every day in the trailing `lookback_days`,
+    returning the full trajectory rather than a single current value.
+
+    Built for the OBV Divergence Decaying signal below, which needs to
+    know whether OBV's slope is CURRENTLY below its own recent
+    high-water-mark — i.e. whether the rate of accumulation has already
+    peaked and is now fading, per the chart-study pattern: "OBV peaks
+    first, then price catches up and makes its own peak, price keeps
+    rising (often sharply), but OBV's own slope is already declining
+    underneath that price rise." That's fundamentally a question about
+    obv_slope's OWN trajectory over time, not a single snapshot — same
+    reason obv_acceleration_quiet_base needed two different slope WINDOWS
+    (13w vs 26w) rather than one; this needs the same window's slope
+    measured at multiple POINTS IN TIME instead.
+
+    Uses the exact same zero-crossing-aware normalization as obv_slope()
+    at every step, so the rolling trajectory is consistent with the
+    single-point function elsewhere in this codebase, not a simplified
+    approximation of it.
+    """
+    obv_clean = obv_series.dropna()
+    if len(obv_clean) < window:
+        return pd.Series(dtype=float)
+
+    n_points = min(lookback_days, len(obv_clean) - window + 1)
+    results = {}
+    for i in range(n_points):
+        # i=0 is TODAY (the full series); i=1 is one bar earlier; etc.
+        end = len(obv_clean) - i
+        recent = obv_clean.iloc[end - window:end]
+        if len(recent) < window:
+            continue
+        x = np.arange(len(recent))
+        slope, _intercept = np.polyfit(x, recent.values, 1)
+        crosses_zero = recent.min() < 0 < recent.max()
+        if crosses_zero:
+            rng = recent.max() - recent.min()
+            val = slope / rng * 100 if rng != 0 and not np.isnan(rng) else np.nan
+        else:
+            scale = np.abs(recent).mean()
+            val = slope / scale * 100 if scale != 0 and not np.isnan(scale) else np.nan
+        results[recent.index[-1]] = val
+
+    return pd.Series(results).sort_index()
+
+
 # ----------------------------------------------------------------------------
 # EMA / MACD
 # ----------------------------------------------------------------------------
@@ -506,6 +555,85 @@ def obv_acceleration_quiet_base(
         basis = "neither"
 
     return {"qualifies": is_accelerating and is_quiet, "basis": basis}
+
+
+def obv_divergence_decaying(
+    obv_slope_current: float, obv_slope_recent_high: float, price_chg_window: float,
+    slope_decay_ratio_threshold: float, min_recent_high_pct: float, price_rising_threshold_pct: float,
+) -> dict:
+    """
+    Chart-study-derived signal (NOT statistically validated — same
+    epistemic status as obv_acceleration_quiet_base/Trend Death/
+    obv_price_divergence; see README): the mirror-image caution flag to
+    obv_acceleration_quiet_base above. The exact sequence this is built to
+    catch (per chart review, 25-06-2026): OBV's own rate of accumulation
+    PEAKS FIRST; price then catches up and makes its own peak, often
+    rising sharply from there; but underneath that price strength, OBV's
+    slope is ALREADY declining from its earlier high — the engine that
+    drove the move is fading while the move itself is still visibly
+    happening on the price chart.
+
+    DESIGN NOTE — an earlier version of this function tried to detect "a
+    bullish obv_price_divergence existed recently, then faded," anchored
+    to obv_price_divergence's 52-week-peak reference point. That approach
+    was built, tested against synthetic data, and found NOT to work: a
+    divergence measured against a single fixed, increasingly-distant peak
+    is dominated by the CUMULATIVE effect since that peak and barely
+    responds to genuinely recent dynamics — in testing, it returned "a
+    cushion existed recently" as True for almost any stock below its
+    52-week high with generally-rising OBV, regardless of whether
+    anything was actually fading. Replaced with the approach below, which
+    compares OBV slope to ITS OWN recent trajectory instead (via
+    obv_slope_series()) — verified directly against a constructed
+    OBV-peaks-then-decelerates-while-price-still-rises scenario before
+    being trusted (slope traced a clean 0.40 -> 0.02 decline while price's
+    rolling % change stayed solidly positive throughout).
+
+    Two conditions, BOTH required:
+      1. OBV slope is currently well below its own recent high-water-mark:
+         current obv_slope / obv_slope_series's own trailing max <=
+         `slope_decay_ratio_threshold` (e.g. 0.5 means today's slope is at
+         most half of what it was at its own recent peak within the
+         lookback window). Only evaluated when that recent high was
+         itself meaningfully positive — a stock whose OBV slope was never
+         strongly positive to begin with has nothing to have decayed FROM.
+      2. Price is still positive (rising, or has just peaked) over a
+         comparable recent window — `price_chg_window` >=
+         `price_rising_threshold_pct`. This is specifically a caution flag
+         for stocks that LOOK fine (price still climbing) while the
+         underlying volume support has already started fading — not for
+         stocks that have already started falling, which is a different,
+         more obvious problem this signal isn't trying to catch early.
+
+    Returns a dict, same diagnostic-transparency pattern as
+    obv_acceleration_quiet_base and smallmicro_strict_fail_reasons:
+      - "qualifies": True/False
+      - "basis": "divergence_decaying" (both met), "no_peak_to_decay_from"
+        (OBV's own recent high was never meaningfully positive — nothing
+        to fade from), "obv_still_strong" (price rising, but OBV slope
+        hasn't actually decayed from its own recent high),
+        "price_not_rising" (OBV has decayed, but price isn't rising — not
+        the pattern this flag is for), or "insufficient_data"
+    """
+    if any(pd.isna(v) for v in (obv_slope_current, obv_slope_recent_high, price_chg_window)):
+        return {"qualifies": False, "basis": "insufficient_data"}
+
+    had_a_real_peak = obv_slope_recent_high >= min_recent_high_pct
+    if not had_a_real_peak:
+        return {"qualifies": False, "basis": "no_peak_to_decay_from"}
+
+    decay_ratio = obv_slope_current / obv_slope_recent_high
+    obv_has_decayed = decay_ratio <= slope_decay_ratio_threshold
+    price_rising = price_chg_window >= price_rising_threshold_pct
+
+    if obv_has_decayed and price_rising:
+        basis = "divergence_decaying"
+    elif price_rising:
+        basis = "obv_still_strong"
+    else:
+        basis = "price_not_rising"
+
+    return {"qualifies": obv_has_decayed and price_rising, "basis": basis}
 
 
 # ----------------------------------------------------------------------------

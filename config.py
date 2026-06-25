@@ -343,6 +343,26 @@ OBV_SLOPE_VERY_LONG_WINDOW = 200   # ~1y trading days; added to mirror the Pine 
 OBV_ACCELERATION_RATIO_THRESHOLD = 2.0    # short-term OBV slope must be >= this many times the long-term baseline slope
 OBV_ACCELERATION_PRICE_FLAT_BAND_PCT = 8.0  # price's own % change over the short window must stay within +/- this to count as "quiet"
 
+# ----------------------------------------------------------------------------
+# OBV Divergence Decaying — chart-study CAUTION signal (25-06-2026), the
+# mirror-image of OBV Acceleration / Quiet Base above. NOT statistically
+# validated. Catches: OBV's own rate of accumulation peaks FIRST, price
+# then catches up and makes its own peak (often rising sharply), but OBV's
+# slope is already declining underneath that price strength — the engine
+# driving the move is fading while the move is still visibly happening.
+# See indicators.obv_divergence_decaying()'s docstring for the full
+# pattern and design history (an earlier peak-anchored-divergence
+# approach was tried, tested, and found NOT to work — see the docstring's
+# "DESIGN NOTE" before assuming this is the obvious implementation) and
+# README for how it's wired in. Every number below is an UNVALIDATED
+# starting default — no backtest exists for this signal yet — tune freely
+# after seeing real output, same status as every other threshold here.
+OBV_DIVERGENCE_DECAY_WINDOW = 42                      # ~2 months trading days — both the OBV-slope-history window and the price-change window
+OBV_DIVERGENCE_DECAY_LOOKBACK_DAYS = 150               # how far back to search for OBV slope's own recent high-water-mark
+OBV_DIVERGENCE_DECAY_SLOPE_RATIO_THRESHOLD = 0.5      # current OBV slope must be at/below this fraction of its own recent high to count as "decayed"
+OBV_DIVERGENCE_DECAY_MIN_RECENT_HIGH_PCT = 0.3        # OBV slope's own recent high must have cleared this to count as a real peak worth decaying from
+OBV_DIVERGENCE_DECAY_PRICE_RISING_THRESHOLD_PCT = 3.0  # price's % change over the same window must clear this to count as "still rising"
+
 MACD_FAST, MACD_SLOW, MACD_SIGNAL = 12, 26, 9
 
 SUPERTREND_SLOW = dict(period=10, multiplier=3)

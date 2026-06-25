@@ -71,6 +71,24 @@ def build_metrics_row(
         config.OBV_ACCELERATION_RATIO_THRESHOLD, config.OBV_ACCELERATION_PRICE_FLAT_BAND_PCT,
     )
 
+    # Mirror-image CAUTION signal (chart-study, unvalidated — see
+    # indicators.obv_divergence_decaying() and README): OBV's own rate of
+    # accumulation already peaked and is decaying, even as price is still
+    # rising. Second design — see indicators.py's "DESIGN NOTE" in
+    # obv_divergence_decaying()'s docstring for why the first attempt
+    # (peak-anchored obv_price_divergence history) was replaced.
+    obv_slope_decay_window_val = ind.obv_slope(obv_series, config.OBV_DIVERGENCE_DECAY_WINDOW)
+    obv_slope_history = ind.obv_slope_series(
+        obv_series, config.OBV_DIVERGENCE_DECAY_WINDOW, config.OBV_DIVERGENCE_DECAY_LOOKBACK_DAYS,
+    )
+    obv_slope_recent_high_val = float(obv_slope_history.max()) if len(obv_slope_history) else np.nan
+    price_chg_decay_window = ind.price_pct_change(close, config.OBV_DIVERGENCE_DECAY_WINDOW)
+    obv_decay = ind.obv_divergence_decaying(
+        obv_slope_decay_window_val, obv_slope_recent_high_val, price_chg_decay_window,
+        config.OBV_DIVERGENCE_DECAY_SLOPE_RATIO_THRESHOLD, config.OBV_DIVERGENCE_DECAY_MIN_RECENT_HIGH_PCT,
+        config.OBV_DIVERGENCE_DECAY_PRICE_RISING_THRESHOLD_PCT,
+    )
+
     row = {
         "yf_ticker":              yf_ticker,
         "close":                  float(close.iloc[-1]),
@@ -91,6 +109,16 @@ def build_metrics_row(
         "price_chg_13w":          price_chg_13w,
         "obv_acceleration_quiet_base": "🟢" if obv_accel["qualifies"] else "",
         "obv_acceleration_basis": obv_accel["basis"],
+        # ── OBV Divergence Decaying (chart-study CAUTION signal,
+        # unvalidated — see indicators.obv_divergence_decaying() and
+        # README). Mirror-image of the acceleration flag above: 🔴, not
+        # 🟢, matching the same convention Trend Death uses to be
+        # visually distinct as a warning rather than an opportunity. ──
+        "obv_slope_42d":                 obv_slope_decay_window_val,
+        "obv_slope_42d_recent_high":     obv_slope_recent_high_val,
+        "price_chg_42d":                 price_chg_decay_window,
+        "obv_divergence_decaying":       "🔴" if obv_decay["qualifies"] else "",
+        "obv_divergence_decay_basis":    obv_decay["basis"],
         # ── Liquidity (built for the NSE Small/Micro-cap tier's score gate —
         # see scoring.py compute_smallmicro_score; NSE500/SP500 never needed
         # this since every constituent there is liquid by default) ──

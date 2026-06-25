@@ -787,15 +787,73 @@ Both windows (`obv_slope_13w`/`obv_slope_26w`) were already computed for
 every stock by the OBV Leadership module — no new lookback windows were
 added, this signal is built entirely from existing infrastructure.
 
-**Honest framing:** all three of these chart-study additions came from
+### OBV Divergence Decaying (25-06-2026)
+The mirror-image **caution** flag to OBV Acceleration / Quiet Base above.
+From the same chart-study session, describing the sequence precisely: OBV's
+own rate of accumulation **peaks first**; price then catches up and makes
+its own peak, often rising sharply from there; but underneath that visible
+price strength, OBV's slope is **already declining** from its earlier
+high — the engine that drove the move is fading while the move is still
+happening on the chart. Same motivation as the acceleration signal above,
+inverted: this is meant to catch exhaustion *before* price itself rolls
+over, not after.
+
+**Design history worth knowing before changing this further:** the first
+attempt at this signal checked whether `obv_price_divergence` (the
+existing peak-anchored metric) had been positive recently and was now
+fading. Built, then tested directly against constructed synthetic data
+before being trusted — and found NOT to work: a divergence measured
+against a single, increasingly-distant 52-week peak is dominated by the
+*cumulative* effect since that peak and barely responds to genuinely
+recent dynamics. In testing, it returned "a cushion existed recently" as
+`True` for almost any stock sitting below its 52-week high with
+generally-rising OBV — which describes a huge fraction of real stocks,
+so it wasn't actually discriminating anything. Replaced with the approach
+below, which compares OBV slope to **its own recent trajectory** instead —
+verified directly against a constructed OBV-peaks-then-decelerates-while-
+price-still-rises scenario (slope traced a clean 0.40 → 0.02 decline while
+price's rolling % change stayed solidly positive throughout) before being
+trusted.
+
+Two conditions, **both** required (`indicators.obv_divergence_decaying()`):
+1. **OBV slope has decayed from its own recent high** — `obv_slope_42d`
+   (current ~2-month slope) divided by `obv_slope_42d_recent_high` (the
+   highest that same 42-day slope reached at any point in the trailing
+   `config.OBV_DIVERGENCE_DECAY_LOOKBACK_DAYS`, default 150 days, via the
+   new `indicators.obv_slope_series()` rolling helper) is at or below
+   `config.OBV_DIVERGENCE_DECAY_SLOPE_RATIO_THRESHOLD` (default 0.5 — slope
+   has fallen to half or less of its own recent peak). Only counted when
+   that recent high itself cleared `config.OBV_DIVERGENCE_DECAY_MIN_RECENT_HIGH_PCT`
+   (default 0.3%) — a stock whose OBV slope was never strongly positive
+   has nothing real to have decayed *from*.
+2. **Price is still rising** — `price_chg_42d` (raw % change over the same
+   ~2-month window) is at or above
+   `config.OBV_DIVERGENCE_DECAY_PRICE_RISING_THRESHOLD_PCT` (default 3.0%).
+   This is specifically for stocks that *look* fine (price still
+   climbing) while the underlying volume support has already started
+   fading — not for stocks that have already turned down, which is a
+   different, more obvious problem this signal isn't trying to catch early.
+
+New columns: `obv_slope_42d`, `obv_slope_42d_recent_high`, `price_chg_42d`,
+`obv_divergence_decaying` (🔴 flag — not 🟢, matching the same convention
+Trend Death uses to stay visually distinct as a warning rather than an
+opportunity), `obv_divergence_decay_basis` — same diagnostic-transparency
+pattern as the rest of this system: `"divergence_decaying"` (both
+conditions met), `"obv_still_strong"` (price rising, but OBV slope hasn't
+actually decayed from its own recent high yet), `"price_not_rising"` (OBV
+has decayed, but price isn't rising — not the pattern this flag is for),
+`"no_peak_to_decay_from"` (OBV's own recent high was never meaningfully
+positive — nothing to fade from), or `"insufficient_data"`.
+
+**Honest framing:** all four of these chart-study additions came from
 reading a handful of winning charts visually, not from a statistical
 backtest. See the next section for the actual rigorous validation tool —
-and note that `obv_acceleration_quiet_base` in particular has not been
-backtested even once yet (unlike `obv_52w_high`/OBV leadership, which has
-two confirming runs behind it). Treat a 🟢 here as a research lead worth a
-closer manual look, not a trading signal, until it's been through
-`backtest.py`'s walk-forward methodology the same way every other trusted
-signal in this system was.
+and note that `obv_acceleration_quiet_base` and `obv_divergence_decaying`
+in particular have not been backtested even once yet (unlike
+`obv_52w_high`/OBV leadership, which has two confirming runs behind it).
+Treat a flag here as a research lead worth a closer manual look, not a
+trading signal, until it's been through `backtest.py`'s walk-forward
+methodology the same way every other trusted signal in this system was.
 
 ## Backtest Framework — rigorous signal validation, not chart-reading
 
