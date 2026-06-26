@@ -24,6 +24,7 @@ import data_fetch
 import fundamentals as fnd
 import indicators as ind
 import metrics_builder
+import notify
 import portfolio
 import scoring as sc
 import sector_data
@@ -484,6 +485,17 @@ def main():
 
     sheets_export.export_to_sheets(tabs)
     logger.info("Scan complete and exported to Google Sheets.")
+
+    # ── Daily notification (Telegram + Email) — non-fatal; never blocks/fails
+    # the scan. Reads the same nse_df/us_df/smallmicro_df already computed
+    # above, so the notification reflects exactly this run's fresh data. See
+    # notify.py and config.py "DAILY NOTIFICATION" section for rule definitions.
+    notify.send_daily_notification(
+        nse_df=nse_df,
+        us_df=us_df,
+        smallmicro_df=smallmicro_df,
+        run_date=run_started.strftime("%Y-%m-%d"),
+    )
 
 
 if __name__ == "__main__":

@@ -613,3 +613,35 @@ SHEET_TABS = {
     # data-quality patterns — see README "NSE Small/Micro-cap tier" section).
     "nse_smallmicro_full": "NSE_SmallMicro_Full_Scan",
 }
+
+# ════════════════════════════════════════════════════════════════════════════
+# DAILY NOTIFICATION (Telegram + Email) — three-section daily digest sent
+# after the scan completes. Purely a presentation/delivery layer on top of
+# already-computed columns; does not change any scoring logic.
+#
+#   Section 1 — Elite: EliteCompounderScore >= ELITE_NOTIFY_SCORE_THRESHOLD
+#               (NSE500 + S&P500 only — backtested n=532 evidence for 65,
+#               see README "Backtest Framework")
+#   Section 2 — SmallMicro strict pass (smallmicro_strict_pass == True)
+#   Section 3 — Fresh OBV+RS combo (NSE500 + S&P500 ONLY — SmallMicro has no
+#               obv_leadership_rank/rs_rank by design, see main.py
+#               process_universe docstring). Gated on both ranks > 90th
+#               percentile, then split into three MUTUALLY EXCLUSIVE bands by
+#               pct_from_52w_high (bands are [0,15), [15,25), [25,inf) — note
+#               pct_from_52w_high is stored as a negative-or-zero number, so
+#               "distance off high" = abs(pct_from_52w_high)).
+#
+# Delivery: Telegram Bot API (instant push) AND Gmail SMTP (backup/log),
+# both sent from the same build_message() text. Either channel can fail
+# independently without blocking the other or failing the scan — see
+# notify.py send_daily_notification().
+# ════════════════════════════════════════════════════════════════════════════
+ELITE_NOTIFY_SCORE_THRESHOLD = 65
+
+NOTIFY_COMBO_RANK_THRESHOLD = 90   # both obv_leadership_rank and rs_rank must exceed this
+
+NOTIFY_BREAKOUT_BAND_PCT = 15.0     # Bucket A: 0-15% off 52w high
+NOTIFY_CONFIRMED_BAND_PCT = 25.0    # Bucket B: 15-25% off 52w high
+                                     # Bucket C: >25% off 52w high
+
+NOTIFY_MAX_TICKERS_PER_SECTION = 15   # keeps message reasonably sized for both channels
