@@ -309,8 +309,19 @@ EARNINGS_ACCELERATING_TAB_TOP_N = 30             # how many stocks the EARNINGS_
 # time. Run manually via backtest_workflow.yml, never as part of daily scan.
 # ════════════════════════════════════════════════════════════════════════════
 BACKTEST_UNIVERSE = "NSE500"          # "NSE500", "SP500", or "NSE_SmallMicro" — one at a time
-BACKTEST_MAX_TICKERS = 300            # None = full universe (slow); widened from 100 after a clean 7m43s test run
-BACKTEST_LOOKBACK_YEARS = 3           # how far back snapshot dates go
+# Widened 300->None (full NSE500, ~500 tickers) and 3y->5y lookback
+# (26-06-2026), specifically for a genuine SECOND confirming run on the OBV
+# Divergence Decaying signal — its first two "runs" turned out to be the
+# exact same tickers/lookback/snapshot-dates re-computed, so they produced
+# byte-identical results (33.08pp excess both times) and didn't actually
+# confirm anything new, the same mistake this would have been if OBV
+# Leadership's 100-ticker validation had just been re-run on the same 100
+# tickers a second time instead of widening to 300. This mirrors that same
+# widen-for-a-real-second-data-point pattern. Expect roughly 2.5-3x the
+# runtime of the 300-ticker/3y run (~7m43s) — somewhere in the 20-25 minute
+# range, still well within a manual GitHub Actions run.
+BACKTEST_MAX_TICKERS = None           # None = full universe; widened from 300 for a genuinely different 2nd run, not just a re-run
+BACKTEST_LOOKBACK_YEARS = 5           # how far back snapshot dates go; widened from 3 to also cover more market regimes, not just more names
 BACKTEST_SNAPSHOT_FREQ = "MS"         # "MS" = monthly (1st of month); "W" = weekly (much slower)
 BACKTEST_MIN_HISTORY_DAYS = 300       # minimum days of price history needed before a date is usable
 BACKTEST_HORIZONS_DAYS = {
