@@ -579,31 +579,44 @@ def obv_acceleration_quiet_base(
     unvalidated and presumably lower hit-rate / lower risk-reward than the
     validated scores — that tradeoff is the whole point, not an oversight.
 
-    Two conditions, BOTH required:
-      1. ACCELERATION: short-term OBV slope (intended as ~13-week/3-month,
-         e.g. obv_slope_13w) is at least `accel_ratio_threshold`x the
-         long-term baseline slope (intended as ~26-week/6-month, e.g.
-         obv_slope_26w) — accumulation speeding up relative to its own
-         recent history, not just "OBV is rising." Sign-aware: a
-         meaningfully-more-positive short slope counts; a short slope
-         that's LESS negative than a negative long slope (i.e. selling
-         pressure easing) is treated as a weaker, separate case — flagged
-         distinctly below rather than conflated with genuine acceleration.
-      2. QUIET BASE: price hasn't moved much yet over a comparable recent
-         window (price_chg_short, the same ~13-week/3-month window as the
-         short OBV slope) — within `price_flat_band_pct` of flat. This is
-         the "price hasn't caught up to the OBV story yet" condition from
-         the chart examples; without it, this would just be confirming a
-         move that's already visible to everyone, not catching it early.
+    Two conditions tracked, only the FIRST gates `qualifies` (see
+    "REDESIGN" note below for why the second was dropped as a gate):
+      1. ACCELERATION (this alone now drives `qualifies`): short-term OBV
+         slope (intended as ~13-week/3-month, e.g. obv_slope_13w) is at
+         least `accel_ratio_threshold`x the long-term baseline slope
+         (intended as ~26-week/6-month, e.g. obv_slope_26w) — accumulation
+         speeding up relative to its own recent history, not just "OBV is
+         rising." Sign-aware: a meaningfully-more-positive short slope
+         counts; a short slope that's LESS negative than a negative long
+         slope (i.e. selling pressure easing) is treated as a weaker,
+         separate case — flagged distinctly below rather than conflated
+         with genuine acceleration.
+      2. QUIET BASE (tracked, reported in `basis`, but NO LONGER required):
+         price hasn't moved much yet over the same recent window
+         (price_chg_short) — within `price_flat_band_pct` of flat.
+
+    REDESIGN (26-06-2026): originally both conditions were required. A
+    real backtest (NSE500, two runs — 24-06-2026 and 26-06-2026) showed
+    the compound signal UNDERPERFORMING the acceleration condition tested
+    alone both times (e.g. 2nd run: compound +17.88pp 12m excess vs.
+    `obv_accel_subcondition_only` alone +22.31pp, n=967) — the quiet-price
+    requirement was actively filtering OUT some of the strongest setups,
+    not adding selectivity that helped. Dropped as a gate; acceleration
+    alone now determines `qualifies`. `price_chg_short`/`is_quiet` are
+    still computed and reported in `basis` for context, since "did price
+    already move" is still useful information to see on the sheet, even
+    though it no longer decides the flag.
 
     Returns a dict (not a single bool) so the caller/sheet can distinguish
-    WHY a stock didn't qualify, the same diagnostic-transparency pattern
-    used in smallmicro_strict_fail_reasons:
-      - "qualifies": True/False
-      - "basis": one of "accelerating_quiet_base" (both conditions met),
-        "accelerating_but_price_moved" (condition 1 only),
-        "quiet_but_not_accelerating" (condition 2 only),
-        "neither", or "insufficient_data" (any input was NaN)
+    WHY a stock is or isn't flagged, the same diagnostic-transparency
+    pattern used in smallmicro_strict_fail_reasons:
+      - "qualifies": True/False — now driven by acceleration alone
+      - "basis": one of "accelerating_quiet_base" (accelerating AND price
+        was quiet — the original, narrower pattern), "accelerating_but_price_moved"
+        (accelerating, price already moved — STILL qualifies now, unlike
+        before the redesign), "quiet_but_not_accelerating" (price quiet,
+        but not accelerating — does not qualify), "neither", or
+        "insufficient_data" (any input was NaN)
     """
     if any(pd.isna(v) for v in (obv_slope_short, obv_slope_long, price_chg_short)):
         return {"qualifies": False, "basis": "insufficient_data"}
@@ -637,7 +650,8 @@ def obv_acceleration_quiet_base(
     else:
         basis = "neither"
 
-    return {"qualifies": is_accelerating and is_quiet, "basis": basis}
+    # qualifies now depends ONLY on is_accelerating — see REDESIGN note above.
+    return {"qualifies": is_accelerating, "basis": basis}
 
 
 def obv_divergence_decaying(

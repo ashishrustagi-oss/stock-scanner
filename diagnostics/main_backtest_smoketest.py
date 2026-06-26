@@ -104,10 +104,21 @@ print(f"\nConfirmed: baseline sample size ({baseline_n}) >= every other signal's
 n_compound = summary_df.loc[summary_df["signal"] == "obv_acceleration_quiet_base", "sample_size"].iloc[0]
 n_accel_sub = summary_df.loc[summary_df["signal"] == "obv_accel_subcondition_only", "sample_size"].iloc[0]
 n_quiet_sub = summary_df.loc[summary_df["signal"] == "obv_quiet_subcondition_only", "sample_size"].iloc[0]
-assert n_compound <= n_accel_sub, f"Compound flag ({n_compound}) exceeds its own acceleration sub-condition ({n_accel_sub})"
-assert n_compound <= n_quiet_sub, f"Compound flag ({n_compound}) exceeds its own quiet sub-condition ({n_quiet_sub})"
-print(f"\nConfirmed: obv_acceleration_quiet_base ({n_compound}) <= both its sub-conditions "
-      f"(accel: {n_accel_sub}, quiet: {n_quiet_sub}) — compound flag is a proper subset, as it must be.")
+# REDESIGN (26-06-2026): obv_acceleration_quiet_base's `qualifies` now
+# depends ONLY on the acceleration condition (the quiet-price gate was
+# dropped after backtest evidence showed it hurt performance — see
+# README). So the invariant changed too: the compound flag must now equal
+# obv_accel_subcondition_only EXACTLY (same underlying condition, same
+# basis-string mapping for "is_accelerating"), not be a strict subset of
+# both sub-conditions the way it was before this redesign. It's no longer
+# expected to relate to the quiet sub-condition at all.
+assert n_compound == n_accel_sub, (
+    f"Compound flag ({n_compound}) should now EXACTLY match the acceleration "
+    f"sub-condition ({n_accel_sub}) post-redesign — qualifies no longer depends on quiet-price."
+)
+print(f"\nConfirmed: obv_acceleration_quiet_base ({n_compound}) == obv_accel_subcondition_only "
+      f"({n_accel_sub}) exactly — correct post-redesign behavior (quiet-price gate dropped, "
+      f"quiet sub-condition sample size {n_quiet_sub} is no longer a constraint on the compound flag).")
 
 n_decay_compound = summary_df.loc[summary_df["signal"] == "obv_divergence_decaying", "sample_size"].iloc[0]
 n_decay_sub = summary_df.loc[summary_df["signal"] == "obv_decay_price_rising_subcondition_only", "sample_size"].iloc[0]

@@ -760,28 +760,41 @@ to be earlier instead, at the cost of being unvalidated and presumably
 lower hit-rate / worse risk-reward than the validated scores — that's the
 explicit tradeoff being made, not an oversight.
 
-Two conditions, **both** required (`indicators.obv_acceleration_quiet_base()`):
-1. **Acceleration** — the ~13-week (`obv_slope_13w`) OBV slope is at least
+**REDESIGNED 26-06-2026: now only ONE condition gates `qualifies`.**
+Originally both conditions below were required. Two real backtest runs on
+NSE500 showed the compound signal consistently UNDERPERFORMING the
+acceleration condition tested alone — e.g. the 2nd run: compound
++17.88pp 12m excess vs. `obv_accel_subcondition_only` alone +22.31pp
+(n=967). The "quiet base" requirement was filtering OUT some of the
+strongest setups, not adding useful selectivity. **Dropped as a gate** —
+acceleration alone now determines `qualifies`; quiet-price is still
+computed and shown in `basis` for context, but no longer required.
+
+Two conditions tracked (`indicators.obv_acceleration_quiet_base()`), only
+the first now gates `qualifies`:
+1. **Acceleration (this alone drives `qualifies` now)** — the ~13-week
+   (`obv_slope_13w`) OBV slope is at least
    `config.OBV_ACCELERATION_RATIO_THRESHOLD` (default 2.0x) the ~26-week
    (`obv_slope_26w`) baseline slope. Sign-aware: a short slope that's
    *more negative* than the long baseline (selling accelerating) is
    explicitly excluded — verified directly, not just assumed, since a
    naive ratio on two negative numbers could otherwise flag accelerating
    selling as if it were the bullish pattern.
-2. **Quiet base** — price hasn't moved much yet: `price_chg_13w` (raw %
-   change over the same ~13-week window) is within
-   `config.OBV_ACCELERATION_PRICE_FLAT_BAND_PCT` (default ±8%) of flat.
-   Without this, the signal would just be confirming a move that's
-   already visible to everyone, not catching it early — that's the whole
-   point of the "quiet base" requirement.
+2. **Quiet base (tracked, reported, no longer required)** — price hasn't
+   moved much yet: `price_chg_13w` (raw % change over the same ~13-week
+   window) is within `config.OBV_ACCELERATION_PRICE_FLAT_BAND_PCT`
+   (default ±8%) of flat. Originally meant to ensure the signal caught a
+   move before it was visible to everyone — but the backtest evidence
+   says this is costing more than it's worth.
 
-New columns: `price_chg_13w`, `obv_acceleration_quiet_base` (🟢 flag),
-`obv_acceleration_basis` — the basis column is diagnostic, same pattern as
-`smallmicro_strict_fail_reasons`: `"accelerating_quiet_base"` (both
-conditions met), `"accelerating_but_price_moved"` (accelerating, but price
-already ran — the move you'd have wanted to catch earlier),
-`"quiet_but_not_accelerating"` (price is quiet, but OBV isn't speeding up),
-`"neither"`, or `"insufficient_data"`.
+New columns: `price_chg_13w`, `obv_acceleration_quiet_base` (🟢 flag — now
+fires on acceleration alone), `obv_acceleration_basis` — the basis column
+is diagnostic, same pattern as `smallmicro_strict_fail_reasons`:
+`"accelerating_quiet_base"` (accelerating AND price was quiet — the
+original, narrower pattern), `"accelerating_but_price_moved"`
+(accelerating, price already ran — **now also qualifies**, post-redesign),
+`"quiet_but_not_accelerating"` (price is quiet, but OBV isn't speeding
+up — does not qualify), `"neither"`, or `"insufficient_data"`.
 
 Both windows (`obv_slope_13w`/`obv_slope_26w`) were already computed for
 every stock by the OBV Leadership module — no new lookback windows were
@@ -1006,11 +1019,52 @@ A standalone smoketest, `diagnostics/main_backtest_smoketest.py` (new,
 before, unlike the SmallMicro path's existing
 `smallmicro_backtest_smoketest.py`), exercises the full
 `compute_signals_for_snapshot` → `run_backtest` → `aggregate_results`
-pipeline against synthetic data and additionally verifies a real logical
-invariant: each compound flag's sample size must always be ≤ both of its
-own sub-conditions' sample sizes, since a stock satisfying the AND of two
-conditions must also satisfy each one individually. Confirmed directly,
-not just assumed.
+pipeline against synthetic data and verifies real logical invariants for
+each compound flag — though note these invariants differ between the two
+signals after the 26-06-2026 redesign below: `obv_divergence_decaying`'s
+sample size must be ≤ its price-rising sub-condition (still an AND of two
+real conditions), while `obv_acceleration_quiet_base`'s sample size must
+now EXACTLY EQUAL `obv_accel_subcondition_only` (the quiet-price gate was
+dropped, so it's no longer a 2-condition AND). Both confirmed directly on
+synthetic data, not just assumed.
+
+### Real backtest results and the redesign they drove (26-06-2026)
+
+First real NSE500 run (n=5,144 baseline) on the original 2-condition
+designs found two problems, in opposite directions:
+
+**`obv_acceleration_quiet_base` underperformed baseline** (+17.75pp 12m
+excess vs. baseline's +21.63pp) — the compound signal did WORSE than
+picking randomly. `obv_accel_subcondition_only` alone did better
+(+22.25pp). **Fix:** dropped the quiet-price gate entirely (see section
+above) — acceleration alone now drives `qualifies`.
+
+**`obv_divergence_decaying` barely differed from "price rose alone"**
+(+26.34pp vs. its own price-rising sub-condition's +25.55pp) — the
+"OBV decayed" condition wasn't adding real discrimination. Diagnosed:
+~80% of all stocks satisfied the original single-point decay check at any
+moment, since OBV slope is naturally noisy. **Fix:** redesigned to require
+SUSTAINED decay against a rolling high-water-mark (see "OBV Divergence
+Decaying" section above) — re-running the backtest after this fix showed
+the gap widen dramatically: `obv_divergence_decaying` +33.08pp vs. its
+price-rising sub-condition's +25.76pp (n=104 vs n=1,478) — a real 7.3pp
+difference this time, confirming the redesign actually added
+discrimination.
+
+**But the redesigned result is itself a surprise worth treating
+carefully**: `obv_divergence_decaying` now shows the STRONGEST positive
+excess return in the entire table — the opposite of its intended caution
+purpose (it was supposed to predict *under*performance, not the best
+performance of any signal tested). Deliberately not reinterpreted,
+relabeled, or acted on from a single run — this project's own standard
+(the one OBV leadership itself had to clear before being trusted: two
+confirming backtest runs) hasn't been met yet for this result. The
+honest, disciplined next step is running this backtest again before
+drawing any conclusion about what a positive-instead-of-negative result
+actually means — possibly the chart-study theory was backwards, possibly
+this is identifying healthy consolidation rather than exhaustion, possibly
+n=104 is sensitive to this particular time window. One run isn't enough to
+tell which.
 
 ## OBV Leadership Rank — backtest-driven, not chart-driven
 

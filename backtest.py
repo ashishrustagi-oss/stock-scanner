@@ -197,16 +197,20 @@ SIGNAL_DEFINITIONS = {
     "composite_score_above_85": lambda df: df["composite_score"] > 85,
     "composite_score_below_50": lambda df: df["composite_score"] < 50,
     "baseline_all_stocks": lambda df: pd.Series(True, index=df.index),
-    # OBV Acceleration / Quiet Base (25-06-2026, chart-study, unvalidated
-    # until this backtest runs) — EARLY-ENTRY signal. The hoped-for result:
-    # POSITIVE excess return, ideally comparable to or better than
-    # obv_52w_high, since the whole premise is catching the move before
-    # that signal would have fired.
+    # OBV Acceleration / Quiet Base (25-06-2026, chart-study) — EARLY-ENTRY
+    # signal. REDESIGNED 26-06-2026: `qualifies` now depends ONLY on
+    # acceleration — the quiet-price gate was dropped after backtest
+    # evidence (two runs) showed it hurt performance (compound signal
+    # underperformed obv_accel_subcondition_only alone both times). As a
+    # direct result, "obv_acceleration_quiet_base" and
+    # "obv_accel_subcondition_only" below are now EXACTLY THE SAME signal
+    # — kept both rather than removing the duplicate, since seeing two
+    # identical rows in a backtest run is itself a quick visual
+    # confirmation that the redesign took effect correctly.
     "obv_acceleration_quiet_base": lambda df: df["obv_acceleration_quiet_base"] == "🟢",
-    # Sub-condition isolation (same reasoning as the SmallMicroScore
-    # component-level signals below) — lets you tell whether acceleration
-    # alone, quiet-price alone, or only the combination actually predicts
-    # anything, rather than treating the compound flag as a black box.
+    # obv_quiet_subcondition_only is STILL useful as standalone diagnostic
+    # context (what would "price was quiet" alone have predicted?), even
+    # though it's no longer a constraint on the compound flag above.
     "obv_accel_subcondition_only": lambda df: df["obv_acceleration_basis"].isin(
         ["accelerating_quiet_base", "accelerating_but_price_moved"]
     ),
@@ -232,6 +236,15 @@ SIGNAL_DEFINITIONS = {
     "obv_decay_price_rising_subcondition_only": lambda df: df["obv_divergence_decay_basis"].isin(
         ["divergence_decaying", "obv_still_strong"]
     ),
+    # NOTE (26-06-2026): the SUSTAINED-decay redesign (see indicators.py
+    # and README "OBV Divergence Decaying") was run once on NSE500 and
+    # produced a genuinely SURPRISING result — the strongest POSITIVE
+    # excess return in the entire table (+33.08pp at 12m, n=104), the
+    # opposite of this signal's intended caution purpose. Deliberately
+    # NOT reinterpreted, relabeled, or acted on yet: this project's own
+    # standard (the one OBV leadership itself had to clear before being
+    # trusted) is TWO confirming runs, not one. Re-run this backtest again
+    # before drawing any conclusion about what this result actually means.
 }
 
 # SmallMicroScore signals — separate dict, used only when
