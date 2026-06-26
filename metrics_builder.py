@@ -71,14 +71,17 @@ def build_metrics_row(
         config.OBV_ACCELERATION_RATIO_THRESHOLD, config.OBV_ACCELERATION_PRICE_FLAT_BAND_PCT,
     )
 
-    # Mirror-image CAUTION signal (chart-study, unvalidated — see
-    # indicators.obv_divergence_decaying() and README): OBV's own rate of
-    # accumulation already peaked and is decaying, even as price is still
-    # rising. 3rd design — see indicators.py's "DESIGN HISTORY" in
-    # obv_divergence_decaying()'s docstring: two earlier single-point
-    # approaches were tried and replaced after testing showed they weren't
-    # selective (confirmed via the 26-06-2026 NSE500 backtest run, which
-    # showed the 2nd design barely differed from "price rose" alone).
+    # RELABELED 26-06-2026 (was obv_divergence_decaying, a caution flag) —
+    # see indicators.obv_calm_continuation()'s docstring for the full
+    # evidence trail. Two independent NSE500 backtest runs both showed
+    # this predicting STRONG POSITIVE excess return (the opposite of the
+    # original caution hypothesis), confirmed via real-data investigation
+    # (diagnostics/divergence_decaying_mechanism_check.py): flagged stocks
+    # run calmer than average AND already have stronger RS — but with a
+    # real sector-concentration caveat (Healthcare ~3.5x overrepresented
+    # in one live check) that should travel with this signal wherever
+    # it's used. Mechanically unchanged from the original 3rd-design
+    # sustained-decay logic — only the interpretation/labeling/emoji changed.
     obv_slope_decay_window_val = ind.obv_slope(obv_series, config.OBV_DIVERGENCE_DECAY_WINDOW)
     obv_slope_history = ind.obv_slope_series(
         obv_series, config.OBV_DIVERGENCE_DECAY_WINDOW, config.OBV_DIVERGENCE_DECAY_LOOKBACK_DAYS,
@@ -91,7 +94,7 @@ def build_metrics_row(
         config.OBV_DIVERGENCE_DECAY_MIN_FRACTION_REQUIRED,
     )
     price_chg_decay_window = ind.price_pct_change(close, config.OBV_DIVERGENCE_DECAY_WINDOW)
-    obv_decay = ind.obv_divergence_decaying(
+    obv_calm = ind.obv_calm_continuation(
         sustained["sustained_decay"], sustained["had_a_real_peak"], price_chg_decay_window,
         config.OBV_DIVERGENCE_DECAY_PRICE_RISING_THRESHOLD_PCT,
     )
@@ -116,17 +119,18 @@ def build_metrics_row(
         "price_chg_13w":          price_chg_13w,
         "obv_acceleration_quiet_base": "🟢" if obv_accel["qualifies"] else "",
         "obv_acceleration_basis": obv_accel["basis"],
-        # ── OBV Divergence Decaying (chart-study CAUTION signal,
-        # unvalidated — see indicators.obv_divergence_decaying() and
-        # README). Mirror-image of the acceleration flag above: 🔴, not
-        # 🟢, matching the same convention Trend Death uses to be
-        # visually distinct as a warning rather than an opportunity. ──
+        # ── OBV Calm Continuation (RELABELED bullish signal, backtest-
+        # confirmed across 2 runs but mechanism only partially understood
+        # — see indicators.obv_calm_continuation() and README for the
+        # sector-concentration caveat). 🟢, not 🔴 — this is now a bullish
+        # flag, matching obv_acceleration_quiet_base's convention rather
+        # than Trend Death's caution convention it originally used. ──
         "obv_slope_42d":                 obv_slope_decay_window_val,
         "obv_slope_42d_recent_high":     obv_slope_recent_high_val,
-        "obv_decay_current_ratio":       sustained["current_ratio"],
+        "obv_calm_current_ratio":        sustained["current_ratio"],
         "price_chg_42d":                 price_chg_decay_window,
-        "obv_divergence_decaying":       "🔴" if obv_decay["qualifies"] else "",
-        "obv_divergence_decay_basis":    obv_decay["basis"],
+        "obv_calm_continuation":         "🟢" if obv_calm["qualifies"] else "",
+        "obv_calm_continuation_basis":   obv_calm["basis"],
         # ── Liquidity (built for the NSE Small/Micro-cap tier's score gate —
         # see scoring.py compute_smallmicro_score; NSE500/SP500 never needed
         # this since every constituent there is liquid by default) ──

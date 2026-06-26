@@ -654,68 +654,89 @@ def obv_acceleration_quiet_base(
     return {"qualifies": is_accelerating, "basis": basis}
 
 
-def obv_divergence_decaying(
+def obv_calm_continuation(
     sustained_decay: bool, had_a_real_peak: bool, price_chg_window: float,
     price_rising_threshold_pct: float,
 ) -> dict:
     """
-    Chart-study-derived signal (NOT statistically validated — same
-    epistemic status as obv_acceleration_quiet_base/Trend Death/
-    obv_price_divergence; see README): the mirror-image caution flag to
-    obv_acceleration_quiet_base above. The exact sequence this is built to
-    catch (per chart review, 25-06-2026): OBV's own rate of accumulation
-    PEAKS FIRST; price then catches up and makes its own peak, often
-    rising sharply from there; but underneath that price strength, OBV's
-    slope is ALREADY declining from its earlier high — the engine that
-    drove the move is fading while the move itself is still visibly
-    happening on the price chart.
+    Chart-study-derived signal (statistically tested — see RELABELED note
+    below — but the MECHANISM behind why it works is still not fully
+    understood; treat with the corresponding caution). Originally built,
+    under the name `obv_divergence_decaying`, as a CAUTION/exit flag: the
+    hypothesis was that sustained OBV deceleration while price keeps
+    rising signals exhaustion — the engine driving a move fading while the
+    move is still visibly happening on the chart.
 
-    DESIGN HISTORY — two prior approaches were tried and replaced, in
-    order, each found NOT selective enough when tested directly against
-    synthetic data rather than assumed to work:
-      1st: anchored to obv_price_divergence's 52-week-peak reference —
-        dominated by cumulative effect since an increasingly-distant
-        peak, barely responded to recent dynamics, ~always true.
-      2nd: single-point comparison of today's slope to ONE fixed peak
-        across the whole lookback window — ~80% of all stocks satisfied
-        this at any moment, OBV slope is just naturally noisy.
-      3rd (current): see obv_slope_sustained_decay() — requires the decay
-        to be SUSTAINED across many consecutive days against a ROLLING
-        (not fixed) high-water-mark. Verified to cut the false-positive
-        rate to ~7% on synthetic data before being wired in here.
+    RELABELED 26-06-2026 — the original hypothesis was WRONG, confirmed by
+    evidence, not guessed: TWO independent NSE500 backtest runs (one at
+    300 tickers/3y lookback, one at the full ~500-ticker universe/5y
+    lookback — genuinely different samples, not a re-run of the same one)
+    both showed this signal predicting STRONG POSITIVE excess return
+    (+33.08pp and +33.78pp at 12m respectively) — the opposite of the
+    intended caution purpose, and consistent enough across both runs to
+    treat as a real finding rather than a fluke.
 
-    Two conditions, BOTH required:
+    Real-data investigation (not just backtest aggregates) into WHY,
+    via diagnostics/divergence_decaying_mechanism_check.py against a live
+    NSE500 universe, found:
+      - Flagged stocks DO run calmer than average (mean
+        atr_compression_percentile 72.4 vs. 61.0 for unflagged, median gap
+        even larger: 82.1 vs 64.3) — partially supports a "calm,
+        low-volatility continuation" read, but NOT universally: some
+        flagged names had LOW compression (e.g. 16-35th percentile),
+        so this isn't the whole mechanism.
+      - Flagged stocks already had meaningfully higher RS_score on
+        average (15.42 vs. 8.78) — this signal is mostly confirming
+        already-strong momentum, not independently discovering it.
+      - **Real sector concentration risk**: in the live sample checked,
+        Healthcare was ~35% of flagged names while being only ~10% of the
+        NSE500 universe — a ~3.5x overrepresentation. This raises a real
+        possibility that the strong backtest numbers partly reflect "this
+        signal happened to catch a good sector during a good multi-year
+        window" rather than a mechanism that generalizes cleanly across
+        all sectors and regimes going forward. NOT excluded or
+        de-weighted for Healthcare specifically (a deliberate choice, not
+        an oversight) — but this caveat should travel with this signal
+        wherever it's used; don't treat it as cleanly sector-neutral.
+
+    Bottom line: relabeled as a bullish CONTINUATION signal because the
+    evidence says that's what it predicts — but the underlying mechanism
+    is only partially understood (calm + already-strong-RS, with a real
+    sector-concentration wrinkle), so this is "confirmed empirically, not
+    fully explained" rather than "confirmed and understood." Treat
+    accordingly — useful as a secondary confirmation layer on stocks that
+    already look strong, not as an independent discovery signal, and
+    watch for sector skew before leaning on it heavily in any one sector.
+
+    Two conditions, BOTH required (mechanically unchanged — only the
+    interpretation/labeling changed, not the math):
       1. sustained_decay is True — see obv_slope_sustained_decay(): OBV's
          slope has been below `config.OBV_DIVERGENCE_DECAY_SLOPE_RATIO_THRESHOLD`
          of its own rolling recent high for
          `config.OBV_DIVERGENCE_DECAY_CONSECUTIVE_DAYS` consecutive days
          in a row, not just today. had_a_real_peak (also from that
          function) gates out stocks whose OBV slope was never
-         meaningfully positive to begin with — nothing to have decayed FROM.
-      2. Price is still positive (rising, or has just peaked) over a
-         comparable recent window — `price_chg_window` >=
-         `price_rising_threshold_pct`. This is specifically a caution flag
-         for stocks that LOOK fine (price still climbing) while the
-         underlying volume support has already started fading — not for
-         stocks that have already started falling, which is a different,
-         more obvious problem this signal isn't trying to catch early.
+         meaningfully positive to begin with.
+      2. Price is still positive (rising) over a comparable recent
+         window — `price_chg_window` >= `price_rising_threshold_pct`.
 
     Returns a dict, same diagnostic-transparency pattern as
     obv_acceleration_quiet_base and smallmicro_strict_fail_reasons:
       - "qualifies": True/False
-      - "basis": "divergence_decaying" (both met), "no_peak_to_decay_from"
-        (OBV's slope was never meaningfully positive — nothing to fade
-        from), "obv_still_strong" (price rising, but OBV hasn't shown
-        sustained decay), "price_not_rising" (OBV has sustained-decayed,
-        but price isn't rising — not the pattern this flag is for)
+      - "basis": "calm_continuation" (both conditions met — the relabeled
+        bullish pattern), "no_obv_signal" (OBV's slope was never
+        meaningfully positive — no real pattern either way), "obv_still_strong"
+        (price rising, but OBV hasn't shown sustained decay — a
+        DIFFERENT, not-yet-characterized case), "price_not_rising" (OBV
+        has sustained-decayed, but price isn't rising)
     """
     if not had_a_real_peak:
-        return {"qualifies": False, "basis": "no_peak_to_decay_from"}
+        return {"qualifies": False, "basis": "no_obv_signal"}
 
     price_rising = price_chg_window >= price_rising_threshold_pct if not pd.isna(price_chg_window) else False
 
     if sustained_decay and price_rising:
-        basis = "divergence_decaying"
+        basis = "calm_continuation"
     elif price_rising:
         basis = "obv_still_strong"
     else:

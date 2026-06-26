@@ -800,20 +800,30 @@ Both windows (`obv_slope_13w`/`obv_slope_26w`) were already computed for
 every stock by the OBV Leadership module — no new lookback windows were
 added, this signal is built entirely from existing infrastructure.
 
-### OBV Divergence Decaying (25-06-2026)
-The mirror-image **caution** flag to OBV Acceleration / Quiet Base above.
-From the same chart-study session, describing the sequence precisely: OBV's
-own rate of accumulation **peaks first**; price then catches up and makes
-its own peak, often rising sharply from there; but underneath that visible
-price strength, OBV's slope is **already declining** from its earlier
-high — the engine that drove the move is fading while the move is still
-happening on the chart. Same motivation as the acceleration signal above,
-inverted: this is meant to catch exhaustion *before* price itself rolls
-over, not after.
+### OBV Calm Continuation (25-06-2026, relabeled 26-06-2026)
+**Originally built as a caution flag** (under the name "OBV Divergence
+Decaying") — the mirror-image of OBV Acceleration / Quiet Base above.
+From the same chart-study session, describing the sequence precisely:
+OBV's own rate of accumulation **peaks first**; price then catches up and
+makes its own peak, often rising sharply from there; but underneath that
+visible price strength, OBV's slope is **already declining** from its
+earlier high — the original hypothesis was that this signals exhaustion,
+catching a reversal *before* price itself rolls over.
+
+**The original hypothesis was WRONG, per evidence — relabeled as a
+bullish CONTINUATION signal instead.** Two independent NSE500 backtest
+runs (300 tickers/3y lookback, then the full ~500-ticker universe/5y
+lookback — genuinely different samples, not a re-run of the same one)
+both showed this signal predicting STRONG POSITIVE excess return
+(+33.08pp and +33.78pp at 12m respectively, close enough across two
+independent samples to treat as real) — the opposite of the intended
+caution purpose. See "Real backtest results" below for the full numbers
+and the mechanism investigation that followed.
 
 **Design history worth knowing before changing this further — TWO real
-problems were found and fixed here, both via direct testing rather than
-assumption:**
+problems were found and fixed in the MECHANICS, both via direct testing
+rather than assumption (this part is unchanged by the later relabeling —
+only the interpretation/name changed, not the underlying math):**
 
 **1st attempt** checked whether `obv_price_divergence` (the existing
 peak-anchored metric) had been positive recently and was now fading.
@@ -837,7 +847,7 @@ just during genuine decay. Even tightening to `slope <= 0` only got to
 51% — the comparison itself (one noisy point vs. one possibly-stale fixed
 peak) was the problem, not the threshold.
 
-**3rd attempt (current)** — see `indicators.obv_slope_sustained_decay()`:
+**3rd attempt (current mechanics)** — see `indicators.obv_slope_sustained_decay()`:
 compares each day's slope to a **rolling** (not fixed) recent high, and
 requires the decayed ratio to hold for **most of `config.OBV_DIVERGENCE_DECAY_CONSECUTIVE_DAYS`
 consecutive days**, not just today. Confirmed via the same synthetic
@@ -860,8 +870,9 @@ period (still partly above threshold) than the *settled* decayed state.
 Both fixes verified directly against the same clean-decay case before
 being trusted, not just reasoned about.
 
-Three conditions, **all required** (`indicators.obv_divergence_decaying()`
-+ `obv_slope_sustained_decay()`):
+Two conditions, **both required** (`indicators.obv_calm_continuation()`
++ `obv_slope_sustained_decay()`) — note the basis labels below reflect the
+post-relabeling interpretation:
 1. **Sustained decay** — OBV's `obv_slope_42d` has been at or below
    `config.OBV_DIVERGENCE_DECAY_SLOPE_RATIO_THRESHOLD` (default 0.5) of
    its own **rolling** recent high (max over the trailing
@@ -869,36 +880,33 @@ Three conditions, **all required** (`indicators.obv_divergence_decaying()`
    recomputed at every point — not one fixed historical peak) for at least
    `config.OBV_DIVERGENCE_DECAY_MIN_FRACTION_REQUIRED` (default 90%) of
    the trailing `config.OBV_DIVERGENCE_DECAY_CONSECUTIVE_DAYS` (default
-   15) days.
-2. **A real peak existed to decay from** — the rolling high itself
-   cleared `config.OBV_DIVERGENCE_DECAY_MIN_RECENT_HIGH_PCT` (default
-   0.3%) for most of that same window — a stock whose OBV slope was never
-   strongly positive has nothing real to have decayed *from*.
-3. **Price is still rising** — `price_chg_42d` (raw % change over the
+   15) days. A real high-water-mark must have existed (cleared
+   `config.OBV_DIVERGENCE_DECAY_MIN_RECENT_HIGH_PCT`, default 0.3%, for
+   most of that window) — a stock whose OBV slope was never meaningfully
+   positive has no real OBV signal either way.
+2. **Price is still rising** — `price_chg_42d` (raw % change over the
    same ~2-month window) is at or above
    `config.OBV_DIVERGENCE_DECAY_PRICE_RISING_THRESHOLD_PCT` (default
-   3.0%). This is specifically for stocks that *look* fine (price still
-   climbing) while the underlying volume support has already started
-   fading — not for stocks that have already turned down, which is a
-   different, more obvious problem this signal isn't trying to catch early.
+   3.0%).
 
 New columns: `obv_slope_42d`, `obv_slope_42d_recent_high`,
-`obv_decay_current_ratio` (today's slope ÷ today's rolling high — shown
+`obv_calm_current_ratio` (today's slope ÷ today's rolling high — shown
 for context even when the sustained check fails), `price_chg_42d`,
-`obv_divergence_decaying` (🔴 flag — not 🟢, matching the same convention
-Trend Death uses to stay visually distinct as a warning rather than an
-opportunity), `obv_divergence_decay_basis` — same diagnostic-transparency
-pattern as the rest of this system: `"divergence_decaying"` (all 3
-conditions met), `"obv_still_strong"` (price rising, but OBV hasn't shown
-sustained decay), `"price_not_rising"` (OBV has sustained-decayed, but
-price isn't rising — not the pattern this flag is for), or
-`"no_peak_to_decay_from"` (OBV's slope was never meaningfully positive —
-nothing to fade from).
+`obv_calm_continuation` (🟢 flag — bullish, matching
+`obv_acceleration_quiet_base`'s convention, NOT the 🔴 caution convention
+this signal originally shipped with), `obv_calm_continuation_basis` —
+same diagnostic-transparency pattern as the rest of this system:
+`"calm_continuation"` (both conditions met — the relabeled bullish
+pattern), `"obv_still_strong"` (price rising, but OBV hasn't shown
+sustained decay — a different, not-yet-characterized case),
+`"price_not_rising"` (OBV has sustained-decayed, but price isn't rising —
+not the pattern this flag is for), or `"no_obv_signal"` (OBV's slope was
+never meaningfully positive — no real pattern either way).
 
 **Honest framing:** all four of these chart-study additions came from
 reading a handful of winning charts visually, not from a statistical
 backtest. See the next section for the actual rigorous validation tool —
-and note that `obv_acceleration_quiet_base` and `obv_divergence_decaying`
+and note that `obv_acceleration_quiet_base` and `obv_calm_continuation`
 in particular have not been backtested even once yet (unlike
 `obv_52w_high`/OBV leadership, which has two confirming runs behind it).
 Treat a flag here as a research lead worth a closer manual look, not a
@@ -971,27 +979,27 @@ shows real predictive edge on real NSE/US history — that's exactly what
 running this for real will tell you, and it might show some signals here
 don't hold up as well as the chart study suggested. That's the point.
 
-### Testing the OBV Acceleration / Divergence Decaying signals (25-06-2026)
+### Testing the OBV Acceleration / Calm Continuation signals (25-06-2026)
 
-`obv_acceleration_quiet_base` and `obv_divergence_decaying` (see "Chart
-Study Additions" above) were added to `SIGNAL_DEFINITIONS` and
-`SMALLMICRO_SIGNAL_DEFINITIONS` so this backtest tests them too — both are
-computed unconditionally inside `metrics_builder.build_metrics_row()`,
-so **no changes to either snapshot function were needed**, only new
-entries in the signal dictionaries (verified directly: confirmed both
-columns already exist in a fresh `build_metrics_row()` call before
-touching `backtest.py` at all).
+`obv_acceleration_quiet_base` and `obv_calm_continuation` (the latter
+renamed 26-06-2026 from `obv_divergence_decaying` — see "Chart Study
+Additions" above for the full relabeling story) were added to
+`SIGNAL_DEFINITIONS` and `SMALLMICRO_SIGNAL_DEFINITIONS` so this backtest
+tests them too — both are computed unconditionally inside
+`metrics_builder.build_metrics_row()`, so **no changes to either snapshot
+function were needed**, only new entries in the signal dictionaries
+(verified directly: confirmed both columns already exist in a fresh
+`build_metrics_row()` call before touching `backtest.py` at all).
 
-**Read these two signals' results in OPPOSITE directions from every other
-signal in this file.** `obv_acceleration_quiet_base` is an early-ENTRY
-signal — the hoped-for result is the usual one, positive excess return,
-ideally comparable to or better than `obv_52w_high` since the whole
-premise is catching the move earlier than that signal would. But
-`obv_divergence_decaying` is a CAUTION signal — a *good* result here looks
-like **negative** excess return / a **lower** hit rate than baseline,
-since it's meant to flag stocks about to underperform, not outperform.
-Reading both columns the same way would draw exactly the wrong conclusion
-from one of the two.
+**Historical note, now resolved — read BOTH signals the SAME direction
+now.** When `obv_calm_continuation` still carried its original name and
+caution framing, this section told readers to expect the OPPOSITE
+direction from `obv_acceleration_quiet_base` (negative excess / lower hit
+rate). That guidance turned out to be wrong: two independent backtest
+runs showed the signal predicting strong POSITIVE excess return instead,
+which is why it was relabeled as a bullish continuation signal rather
+than a caution flag. Both signals now expect the same direction — positive
+excess return is the hoped-for/good result for either one.
 
 **Sub-condition isolation, same reasoning as the SmallMicroScore
 component-level signals:** each compound flag is also tested as two
@@ -1002,17 +1010,16 @@ separate halves —
   acceleration alone, quietness alone, or only the AND of both two is
   actually doing the predictive work, rather than treating the compound
   flag as a black box.
-- `obv_decay_price_rising_subcondition_only` (price was rising, regardless
+- `obv_calm_price_rising_subcondition_only` (price was rising, regardless
   of OBV's decay state) is the only sub-condition cleanly extractable from
-  `obv_divergence_decay_basis` for the decay signal — `obv_has_decayed`
-  on its own can't be isolated the same way, since
-  `obv_divergence_decaying()`'s branching collapses "OBV decayed, price
-  not rising" and "OBV didn't decay, price not rising" into the same
-  `"price_not_rising"` basis value once price isn't rising; the function
-  doesn't preserve which case applies in that branch. Worth knowing if
-  you ever want a cleaner OBV-decay-alone signal: that would need a small
-  change to `obv_divergence_decaying()`'s return value, not just a new
-  backtest signal definition.
+  `obv_calm_continuation_basis` — `obv_has_decayed` on its own can't be
+  isolated the same way, since `obv_calm_continuation()`'s branching
+  collapses "OBV decayed, price not rising" and "OBV didn't decay, price
+  not rising" into the same `"price_not_rising"` basis value once price
+  isn't rising; the function doesn't preserve which case applies in that
+  branch. Worth knowing if you ever want a cleaner OBV-decay-alone signal:
+  that would need a small change to `obv_calm_continuation()`'s return
+  value, not just a new backtest signal definition.
 
 A standalone smoketest, `diagnostics/main_backtest_smoketest.py` (new,
 25-06-2026 — the main NSE500/SP500-style backtest path had never had one
@@ -1021,7 +1028,7 @@ before, unlike the SmallMicro path's existing
 `compute_signals_for_snapshot` → `run_backtest` → `aggregate_results`
 pipeline against synthetic data and verifies real logical invariants for
 each compound flag — though note these invariants differ between the two
-signals after the 26-06-2026 redesign below: `obv_divergence_decaying`'s
+signals after the 26-06-2026 redesign below: `obv_calm_continuation`'s
 sample size must be ≤ its price-rising sub-condition (still an AND of two
 real conditions), while `obv_acceleration_quiet_base`'s sample size must
 now EXACTLY EQUAL `obv_accel_subcondition_only` (the quiet-price gate was
@@ -1046,25 +1053,54 @@ above) — acceleration alone now drives `qualifies`.
 moment, since OBV slope is naturally noisy. **Fix:** redesigned to require
 SUSTAINED decay against a rolling high-water-mark (see "OBV Divergence
 Decaying" section above) — re-running the backtest after this fix showed
-the gap widen dramatically: `obv_divergence_decaying` +33.08pp vs. its
-price-rising sub-condition's +25.76pp (n=104 vs n=1,478) — a real 7.3pp
-difference this time, confirming the redesign actually added
-discrimination.
+the gap widen dramatically: `obv_calm_continuation` (then still named
+`obv_divergence_decaying`) +33.08pp vs. its price-rising sub-condition's
++25.76pp (n=104 vs n=1,478) — a real 7.3pp difference this time,
+confirming the redesign actually added discrimination.
 
-**But the redesigned result is itself a surprise worth treating
-carefully**: `obv_divergence_decaying` now shows the STRONGEST positive
-excess return in the entire table — the opposite of its intended caution
-purpose (it was supposed to predict *under*performance, not the best
-performance of any signal tested). Deliberately not reinterpreted,
-relabeled, or acted on from a single run — this project's own standard
-(the one OBV leadership itself had to clear before being trusted: two
-confirming backtest runs) hasn't been met yet for this result. The
-honest, disciplined next step is running this backtest again before
-drawing any conclusion about what a positive-instead-of-negative result
-actually means — possibly the chart-study theory was backwards, possibly
-this is identifying healthy consolidation rather than exhaustion, possibly
-n=104 is sensitive to this particular time window. One run isn't enough to
-tell which.
+**The redesigned result was itself a surprise**: the signal showed the
+STRONGEST positive excess return in the entire table — the opposite of
+its intended caution purpose (it was supposed to predict
+*under*performance, not the best performance of any signal tested).
+Deliberately not reinterpreted from a single run — held to this project's
+own two-run standard first.
+
+**A genuine 2nd confirming run (full ~500-ticker NSE500 universe, 5y
+lookback, not a re-run of the same 300-ticker/3y data) resolved it**:
++33.78pp at 12m, n=270 — within 0.7pp of the first run's +33.08pp, n=104.
+Close enough across two independent samples to treat as a real, confirmed
+finding, clearing the same two-run bar OBV leadership itself had to clear.
+The gap vs. the price-rising sub-condition narrowed somewhat (33.78 vs
+31.12 = 2.66pp this run, vs. 7.3pp the first run) but stayed positive both
+times.
+
+**Mechanism investigation, against real live data, not just backtest
+aggregates** (`diagnostics/divergence_decaying_mechanism_check.py`, run
+against the live NSE500 universe): of 17 currently-flagged stocks —
+- Flagged stocks DO run calmer than average: mean
+  `atr_compression_percentile` 72.4 vs. 61.0 for unflagged (median gap
+  even larger, 82.1 vs 64.3) — partially supports a "calm, low-volatility
+  continuation" mechanism, but not universally (a few flagged names had
+  LOW compression, 16th-35th percentile).
+- Flagged stocks already had meaningfully higher `rs_score` on average
+  (15.42 vs. 8.78) — this signal is mostly confirming already-strong
+  momentum, not independently discovering something new.
+- **Real sector concentration risk**: Healthcare was ~35% of flagged
+  names (6 of 17) while being only ~10% of the NSE500 universe (49 of
+  ~500) — a ~3.5x overrepresentation. This raises a real possibility that
+  some of the backtest's strength reflects "this signal happened to catch
+  a good sector during a good multi-year window" rather than a mechanism
+  that generalizes cleanly. **Not controlled for or excluded** — this
+  caveat travels with the signal wherever it's used; don't treat it as
+  cleanly sector-neutral, especially if a result skews toward one sector.
+
+**Relabeled `obv_divergence_decaying` → `obv_calm_continuation`,
+flag changed 🔴 → 🟢** (bullish, not caution) — the evidence says that's
+what it predicts, even though the *mechanism* is only partially
+understood (calm + already-strong-RS, with the sector wrinkle above).
+"Confirmed empirically, not fully explained" — treat it as a secondary
+confirmation layer on stocks that already look strong, not an independent
+discovery signal, and watch for sector skew before leaning on it heavily.
 
 ## OBV Leadership Rank — backtest-driven, not chart-driven
 

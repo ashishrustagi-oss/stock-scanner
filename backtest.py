@@ -217,34 +217,41 @@ SIGNAL_DEFINITIONS = {
     "obv_quiet_subcondition_only": lambda df: df["obv_acceleration_basis"].isin(
         ["accelerating_quiet_base", "quiet_but_not_accelerating"]
     ),
-    # OBV Divergence Decaying (25-06-2026, chart-study, unvalidated until
-    # this backtest runs) — CAUTION signal. The hoped-for result is the
-    # OPPOSITE of the signals above: NEGATIVE excess return / a LOWER hit
-    # rate than baseline, since this is meant to flag stocks about to
-    # underperform, not outperform. Read this signal's results inverted
-    # from every other one in this file.
-    "obv_divergence_decaying": lambda df: df["obv_divergence_decaying"] == "🔴",
+    # OBV Calm Continuation (RELABELED 26-06-2026, was "obv_divergence_decaying"
+    # — a caution flag). Two independent backtest runs (different ticker
+    # counts/lookback years, not a re-run of the same data) both showed
+    # this predicting STRONG POSITIVE excess return — the opposite of the
+    # original caution hypothesis, confirmed rather than guessed. Real-data
+    # mechanism check (diagnostics/divergence_decaying_mechanism_check.py)
+    # found flagged stocks run calmer AND already have stronger RS than
+    # average — but ALSO found a real sector-concentration risk (Healthcare
+    # ~3.5x overrepresented in one live check). Read this signal's results
+    # the SAME direction as the other bullish signals in this file now
+    # (positive excess return is the hoped-for/expected result) — but treat
+    # any strength here with the sector caveat in mind, especially if a
+    # given backtest run's universe happens to be Healthcare-heavy.
+    "obv_calm_continuation": lambda df: df["obv_calm_continuation"] == "🟢",
     # Only ONE sub-condition is cleanly extractable from the basis string —
-    # "price still rising" (divergence_decaying + obv_still_strong both
-    # have price rising; price_not_rising and no_peak_to_decay_from don't).
-    # "OBV decayed regardless of price" can't cleanly be isolated this way:
-    # obv_divergence_decaying()'s branching collapses BOTH "OBV decayed,
+    # "price still rising" (calm_continuation + obv_still_strong both have
+    # price rising; price_not_rising and no_obv_signal don't). "OBV
+    # sustained-decayed regardless of price" can't cleanly be isolated this
+    # way: obv_calm_continuation()'s branching collapses BOTH "OBV decayed,
     # price not rising" and "OBV didn't decay, price not rising" into the
     # same "price_not_rising" basis value once price isn't rising — the
     # function doesn't preserve which case applies in that branch. Testing
     # only the cleanly-isolable half rather than guessing at the other.
-    "obv_decay_price_rising_subcondition_only": lambda df: df["obv_divergence_decay_basis"].isin(
-        ["divergence_decaying", "obv_still_strong"]
+    "obv_calm_price_rising_subcondition_only": lambda df: df["obv_calm_continuation_basis"].isin(
+        ["calm_continuation", "obv_still_strong"]
     ),
-    # NOTE (26-06-2026): the SUSTAINED-decay redesign (see indicators.py
-    # and README "OBV Divergence Decaying") was run once on NSE500 and
-    # produced a genuinely SURPRISING result — the strongest POSITIVE
-    # excess return in the entire table (+33.08pp at 12m, n=104), the
-    # opposite of this signal's intended caution purpose. Deliberately
-    # NOT reinterpreted, relabeled, or acted on yet: this project's own
-    # standard (the one OBV leadership itself had to clear before being
-    # trusted) is TWO confirming runs, not one. Re-run this backtest again
-    # before drawing any conclusion about what this result actually means.
+    # RESOLVED (26-06-2026): a 2nd confirming run (full ~500-ticker NSE500
+    # universe, 5y lookback — genuinely different from the 1st run's
+    # 300-ticker/3y, not a re-run of the same data) showed the SAME strong
+    # positive result (+33.78pp at 12m, n=270, vs. the 1st run's +33.08pp,
+    # n=104) — close enough across two independent samples to treat as a
+    # real, confirmed finding rather than a fluke, clearing this project's
+    # own two-run standard. Relabeled accordingly above. The
+    # sector-concentration caveat (not yet controlled for) is the main
+    # open question, not whether the positive result itself is real.
 }
 
 # SmallMicroScore signals — separate dict, used only when
@@ -272,11 +279,14 @@ SMALLMICRO_SIGNAL_DEFINITIONS = {
     # OBV Acceleration / Quiet Base + OBV Divergence Decaying (25-06-2026,
     # chart-study, unvalidated) — same signals as SIGNAL_DEFINITIONS above,
     # tested here too since both are computed by build_metrics_row() for
-    # every universe, including NSE_SmallMicro. Same read-direction note:
-    # acceleration is EARLY-ENTRY (hoped-for: positive excess), divergence
-    # decaying is CAUTION (hoped-for: negative excess / lower hit rate).
+    # every universe, including NSE_SmallMicro. obv_calm_continuation was
+    # RELABELED 26-06-2026 (was a caution flag, "obv_divergence_decaying")
+    # after two confirming NSE500 backtest runs both showed it predicting
+    # POSITIVE excess return — see README for the full evidence trail and
+    # the sector-concentration caveat that wasn't yet tested specifically
+    # on the SmallMicro universe.
     "smallmicro_obv_acceleration_quiet_base": lambda df: df["obv_acceleration_quiet_base"] == "🟢",
-    "smallmicro_obv_divergence_decaying": lambda df: df["obv_divergence_decaying"] == "🔴",
+    "smallmicro_obv_calm_continuation": lambda df: df["obv_calm_continuation"] == "🟢",
 }
 
 

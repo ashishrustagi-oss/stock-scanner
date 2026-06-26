@@ -355,33 +355,28 @@ OBV_ACCELERATION_RATIO_THRESHOLD = 2.0    # short-term OBV slope must be >= this
 OBV_ACCELERATION_PRICE_FLAT_BAND_PCT = 8.0  # price's own % change over the short window must stay within +/- this to count as "quiet"
 
 # ----------------------------------------------------------------------------
-# OBV Divergence Decaying — chart-study CAUTION signal (25-06-2026), the
-# mirror-image of OBV Acceleration / Quiet Base above. NOT statistically
-# validated. Catches: OBV's own rate of accumulation peaks FIRST, price
-# then catches up and makes its own peak (often rising sharply), but OBV's
-# slope is already declining underneath that price strength — the engine
-# driving the move is fading while the move is still visibly happening.
-# See indicators.obv_divergence_decaying()'s docstring for the full
-# pattern and design history (an earlier peak-anchored-divergence
-# approach was tried, tested, and found NOT to work — see the docstring's
-# "DESIGN NOTE" before assuming this is the obvious implementation) and
-# README for how it's wired in. Every number below is an UNVALIDATED
-# starting default — no backtest exists for this signal yet — tune freely
-# after seeing real output, same status as every other threshold here.
-# Backtest evidence (NSE500, 26-06-2026, n=2,074 baseline) found the
-# original single-point design was barely selective: obv_divergence_decaying
-# showed +26.34pp excess at 12m, nearly identical to its own
-# "price rising" sub-condition alone (+25.55pp) — the "OBV decayed"
-# condition wasn't adding real discrimination. Diagnosed directly: ~80% of
-# ALL stocks satisfied the single-point decay-ratio check at any given
-# moment (OBV slope is naturally noisy, dips below half its own peak
-# constantly from normal variation), so requiring it changed almost
-# nothing. Redesigned (see obv_slope_sustained_decay() in indicators.py)
-# to require SUSTAINED decay against a ROLLING high-water-mark across many
-# consecutive days — verified to cut the false-positive rate to ~7% on
-# synthetic data before being trusted. Re-run the backtest after this
-# change to see whether the redesigned signal actually adds discrimination
-# beyond "price rose" — that's the whole point of redesigning it.
+# OBV Calm Continuation — RELABELED 26-06-2026 (was "OBV Divergence
+# Decaying," built as a chart-study CAUTION signal). The original
+# hypothesis was that sustained OBV deceleration while price keeps rising
+# signals exhaustion. WRONG, per evidence: two independent NSE500 backtest
+# runs (genuinely different ticker counts/lookback years, not a re-run of
+# the same one) both showed this predicting STRONG POSITIVE excess return
+# (+33.08pp and +33.78pp at 12m) — the opposite of the caution hypothesis.
+# Real-data mechanism investigation (diagnostics/divergence_decaying_mechanism_check.py)
+# found flagged stocks run calmer (mean atr_compression_percentile 72.4 vs
+# 61.0 unflagged) AND already have stronger RS (15.42 vs 8.78) — but also
+# found a real sector-concentration risk (Healthcare ~3.5x overrepresented
+# in one live check). Relabeled as a bullish continuation signal because
+# that's what the evidence says it predicts, but the mechanism is only
+# PARTIALLY understood — see indicators.obv_calm_continuation()'s
+# docstring for the full evidence trail and README for the
+# sector-concentration caveat, which should travel with this signal
+# wherever it's used. The mechanics below (constant names kept as
+# OBV_DIVERGENCE_DECAY_* since they accurately describe HOW the signal is
+# computed — sustained slope decay against a rolling high-water-mark —
+# even though WHAT it predicts turned out to be the opposite of the
+# original name) are UNCHANGED by the relabeling; only the interpretation
+# and the function/column names that express that interpretation changed.
 OBV_DIVERGENCE_DECAY_WINDOW = 42                      # ~2 months trading days — both the OBV-slope-history window and the price-change window
 OBV_DIVERGENCE_DECAY_LOOKBACK_DAYS = 150               # how far back obv_slope_series() builds the slope trajectory
 OBV_DIVERGENCE_DECAY_CONSECUTIVE_DAYS = 15             # decay must hold for (most of) this many consecutive trading days, not just today.

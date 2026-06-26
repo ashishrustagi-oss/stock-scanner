@@ -266,9 +266,9 @@ DISPLAY_COLUMNS = [
     "obv_price_divergence", "obv_leadership_rank",
     # OBV Acceleration / Quiet Base (chart-study, unvalidated — see README)
     "price_chg_13w", "obv_acceleration_quiet_base", "obv_acceleration_basis",
-    # OBV Divergence Decaying (chart-study CAUTION signal, unvalidated — see README)
-    "obv_slope_42d", "obv_slope_42d_recent_high", "obv_decay_current_ratio", "price_chg_42d",
-    "obv_divergence_decaying", "obv_divergence_decay_basis",
+    # OBV Calm Continuation (RELABELED bullish signal, backtest-confirmed across 2 runs, mechanism only partially understood — see README)
+    "obv_slope_42d", "obv_slope_42d_recent_high", "obv_calm_current_ratio", "price_chg_42d",
+    "obv_calm_continuation", "obv_calm_continuation_basis",
 ]
 
 # Raw + SmallMicroScore tier — NSE_SmallMicro. Deliberately excludes
@@ -297,9 +297,9 @@ RAW_DISPLAY_COLUMNS = [
     "obv_slope_13w", "obv_slope_26w",
     # OBV Acceleration / Quiet Base (chart-study, unvalidated — see README)
     "price_chg_13w", "obv_acceleration_quiet_base", "obv_acceleration_basis",
-    # OBV Divergence Decaying (chart-study CAUTION signal, unvalidated — see README)
-    "obv_slope_42d", "obv_slope_42d_recent_high", "obv_decay_current_ratio", "price_chg_42d",
-    "obv_divergence_decaying", "obv_divergence_decay_basis",
+    # OBV Calm Continuation (RELABELED bullish signal, backtest-confirmed across 2 runs, mechanism only partially understood — see README)
+    "obv_slope_42d", "obv_slope_42d_recent_high", "obv_calm_current_ratio", "price_chg_42d",
+    "obv_calm_continuation", "obv_calm_continuation_basis",
     # MACD (daily/weekly/monthly)
     "daily_macd", "daily_signal", "daily_hist", "macd_early_bullish", "macd_early_bearish",
     "weekly_macd", "weekly_signal", "weekly_hist", "weekly_macd_positive",
