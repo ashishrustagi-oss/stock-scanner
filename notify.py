@@ -195,50 +195,129 @@ def _count_qualifying(combined_df: pd.DataFrame, smallmicro_df: pd.DataFrame) ->
     return {"elite": elite_n, "smallmicro": smallmicro_n, "combo": combo_n}
 
 
-def build_message(combined_df: pd.DataFrame, smallmicro_df: pd.DataFrame, run_date: str) -> str:
-    """Assembles the full message text from the three sections plus a Top 5 leaderboard. Shared by both channels."""
+def build_message_parts(combined_df: pd.DataFrame, smallmicro_df: pd.DataFrame, run_date: str) -> list[tuple[str, bool]]:
+    """
+    Assembles the message as a list of (line, is_heading) tuples — a single
+    source of truth rendered two ways below: Markdown bold for Telegram,
+    HTML <b> for email. is_heading=True marks title/section/sub-headers that
+    should render bold; data rows (ticker lines, the counts line) are False.
+    """
     elite_lines = build_elite_section(combined_df)
     smallmicro_lines = build_smallmicro_section(smallmicro_df)
     combo = build_combo_buckets(combined_df)
     top5_lines = build_top5_leaderboard(combined_df, smallmicro_df)
     counts = _count_qualifying(combined_df, smallmicro_df)
 
-    parts = [
-        f"🚨 ASHISH CAPITAL SCANNER — {run_date}",
-        "━━━━━━━━━━━━━━━━━━━━",
-        f"📊 Elite: {counts['elite']} | SmallMicro: {counts['smallmicro']} | Fresh Combo: {counts['combo']}",
-        "",
-        "🏆 TOP 5 TODAY",
-        *top5_lines,
-        "━━━━━━━━━━━━━━━━━━━━",
-        f"🔥 ELITE (score >= {config.ELITE_NOTIFY_SCORE_THRESHOLD})",
-        *elite_lines,
-        "━━━━━━━━━━━━━━━━━━━━",
-        "🧬 SMALLMICRO — STRICT PASS",
-        *smallmicro_lines,
-        "━━━━━━━━━━━━━━━━━━━━",
-        "🚀 FRESH OBV+RS COMBO (NSE500/S&P500)",
-        "🟢 Breakout (0-15% off high)",
-        *combo["breakout"],
-        "🟡 Confirmed (15-25% off high)",
-        *combo["confirmed"],
-        "🔵 Early (>25% off high)",
-        *combo["early"],
+    parts: list[tuple[str, bool]] = [
+        (f"🚨 ASHISH CAPITAL SCANNER — {run_date}", True),
+        ("━━━━━━━━━━━━━━━━━━━━", False),
+        (f"📊 Elite: {counts['elite']} | SmallMicro: {counts['smallmicro']} | Fresh Combo: {counts['combo']}", False),
+        ("", False),
+        ("🏆 TOP 5 TODAY", True),
+        *((line, False) for line in top5_lines),
+        ("━━━━━━━━━━━━━━━━━━━━", False),
+        (f"🔥 ELITE (score >= {config.ELITE_NOTIFY_SCORE_THRESHOLD})", True),
+        *((line, False) for line in elite_lines),
+        ("━━━━━━━━━━━━━━━━━━━━", False),
+        ("🧬 SMALLMICRO — STRICT PASS", True),
+        *((line, False) for line in smallmicro_lines),
+        ("━━━━━━━━━━━━━━━━━━━━", False),
+        ("🚀 FRESH OBV+RS COMBO (NSE500/S&P500)", True),
+        ("🟢 Breakout (0-15% off high)", True),
+        *((line, False) for line in combo["breakout"]),
+        ("🟡 Confirmed (15-25% off high)", True),
+        *((line, False) for line in combo["confirmed"]),
+        ("🔵 Early (>25% off high)", True),
+        *((line, False) for line in combo["early"]),
     ]
-    return "\n".join(parts)
+    return parts
+
+
+def render_telegram_markdown(parts: list[tuple[str, bool]]) -> str:
+    """Renders parts as Telegram Markdown — headings wrapped in *bold*."""
+    lines = []
+    for text, is_heading in parts:
+        if is_heading and text:
+            # Escape literal underscores/asterisks in headings so Telegram's
+            # Markdown parser doesn't choke on them (none currently appear,
+            # but this keeps it safe if a future heading includes one).
+            safe_text = text.replace("*", "").replace("_", "")
+            lines.append(f"*{safe_text}*")
+        else:
+            lines.append(text)
+    return "\n".join(lines)
+
+
+def render_html_email(parts: list[tuple[str, bool]], run_date: str) -> str:
+    """Renders parts as a simple HTML email — headings wrapped in <b>."""
+    import html as _html
+
+    body_lines = []
+    for text, is_heading in parts:
+        escaped = _html.escape(text)
+        if is_heading and text:
+            body_lines.append(f"<b>{escaped}</b>")
+        elif text == "":
+            body_lines.append("")
+        else:
+            body_lines.append(escaped)
+
+    body_html = "<br>\n".join(body_lines)
+    return (
+        "<html><body style=\"font-family: monospace, sans-serif; white-space: pre-wrap;\">"
+        f"{body_html}"
+        "</body></html>"
+    )
+
+
+def build_message(combined_df: pd.DataFrame, smallmicro_df: pd.DataFrame, run_date: str) -> str:
+    """
+    Plain-text fallback (no bold) — kept for any caller that still wants a
+    single plain string, e.g. logging or future channels without rich text.
+    """
+    parts = build_message_parts(combined_df, smallmicro_df, run_date)
+    return "\n".join(text for text, _ in parts)
 
 
 # ── Telegram ──────────────────────────────────────────────────────────────
 
+def _chunk_message(message: str, max_chars: int) -> list[str]:
+    """
+    Splits on line boundaries only (never mid-line), so a chunk boundary
+    can never land inside a *bold* marker and break Markdown parsing for
+    that chunk.
+    """
+    lines = message.split("\n")
+    chunks: list[str] = []
+    current: list[str] = []
+    current_len = 0
+    for line in lines:
+        # +1 for the newline that will join this line to the chunk
+        added_len = len(line) + 1
+        if current and current_len + added_len > max_chars:
+            chunks.append("\n".join(current))
+            current = []
+            current_len = 0
+        current.append(line)
+        current_len += added_len
+    if current:
+        chunks.append("\n".join(current))
+    return chunks or [message]
+
+
 def _send_telegram(message: str, bot_token: str, chat_id: str) -> bool:
-    """Sends via Telegram Bot API. Splits into multiple messages if too long."""
+    """Sends via Telegram Bot API with Markdown parse mode (for *bold* headings). Splits into multiple messages if too long."""
     url = f"{TELEGRAM_API_BASE}/bot{bot_token}/sendMessage"
-    chunks = [message[i: i + TELEGRAM_MAX_MESSAGE_CHARS] for i in range(0, len(message), TELEGRAM_MAX_MESSAGE_CHARS)] or [message]
+    chunks = _chunk_message(message, TELEGRAM_MAX_MESSAGE_CHARS)
 
     all_ok = True
     for chunk in chunks:
         try:
-            resp = requests.post(url, data={"chat_id": chat_id, "text": chunk}, timeout=30)
+            resp = requests.post(
+                url,
+                data={"chat_id": chat_id, "text": chunk, "parse_mode": "Markdown"},
+                timeout=30,
+            )
             resp.raise_for_status()
             body = resp.json()
             if not body.get("ok", False):
@@ -265,9 +344,9 @@ def send_telegram_notification(message: str) -> None:
 
 # ── Email (Gmail SMTP) ───────────────────────────────────────────────────
 
-def _send_email(message: str, subject: str, sender: str, app_password: str, recipient: str) -> bool:
-    """Sends a plain-text email via Gmail SMTP over SSL."""
-    msg = MIMEText(message, "plain", "utf-8")
+def _send_email(html_body: str, subject: str, sender: str, app_password: str, recipient: str) -> bool:
+    """Sends an HTML email via Gmail SMTP over SSL (so <b> headings render as real bold)."""
+    msg = MIMEText(html_body, "html", "utf-8")
     msg["Subject"] = subject
     msg["From"] = sender
     msg["To"] = recipient
@@ -281,7 +360,7 @@ def _send_email(message: str, subject: str, sender: str, app_password: str, reci
         return False
 
 
-def send_email_notification(message: str, run_date: str) -> None:
+def send_email_notification(html_body: str, run_date: str) -> None:
     sender = os.environ.get("GMAIL_ADDRESS")
     app_password = os.environ.get("GMAIL_APP_PASSWORD")
     recipient = os.environ.get("NOTIFY_EMAIL_TO") or sender  # defaults to sending to self
@@ -289,7 +368,7 @@ def send_email_notification(message: str, run_date: str) -> None:
         logger.warning("GMAIL_ADDRESS or GMAIL_APP_PASSWORD not set — skipping email notification.")
         return
     try:
-        ok = _send_email(message, f"Stock Scanner — {run_date}", sender, app_password, recipient)
+        ok = _send_email(html_body, f"Stock Scanner — {run_date}", sender, app_password, recipient)
         logger.info("Email notification sent." if ok else "Email notification not confirmed as sent.")
     except Exception as exc:  # noqa: BLE001
         logger.warning("Email notification failed (non-fatal): %s", exc)
@@ -303,6 +382,11 @@ def send_daily_notification(nse_df: pd.DataFrame, us_df: pd.DataFrame, smallmicr
     Telegram and email; each channel fails independently and silently if its
     secrets are missing or the send errors out. Never raises — a notification
     failure must not fail the scan or block the Sheets export.
+
+    Builds one shared `parts` structure (line + is_heading), then renders it
+    twice: Telegram Markdown (*bold*) and HTML email (<b>bold</b>) — so both
+    channels show the same headings in bold without duplicating the
+    section-building logic above.
     """
     combined = (
         pd.concat([nse_df, us_df], ignore_index=True)
@@ -311,10 +395,12 @@ def send_daily_notification(nse_df: pd.DataFrame, us_df: pd.DataFrame, smallmicr
     )
 
     try:
-        message = build_message(combined, smallmicro_df, run_date)
+        parts = build_message_parts(combined, smallmicro_df, run_date)
+        telegram_text = render_telegram_markdown(parts)
+        html_body = render_html_email(parts, run_date)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Failed to build notification message (non-fatal): %s", exc)
         return
 
-    send_telegram_notification(message)
-    send_email_notification(message, run_date)
+    send_telegram_notification(telegram_text)
+    send_email_notification(html_body, run_date)
