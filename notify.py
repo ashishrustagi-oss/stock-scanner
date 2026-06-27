@@ -53,12 +53,19 @@ GMAIL_SMTP_PORT = 465
 
 def _fmt_row(ticker: str, close: float, extra: str = "") -> str:
     close_str = f"{close:.2f}" if pd.notna(close) else "NA"
-    line = f"- {ticker} (Rs.{close_str})" if extra == "" else f"- {ticker} (Rs.{close_str}) - {extra}"
+    line = f"• {ticker} (₹{close_str})" if extra == "" else f"• {ticker} (₹{close_str}) — {extra}"
     return line
 
 
 def _section_lines(df: pd.DataFrame, extra_col: str | None = None, extra_label: str = "") -> list[str]:
-    """Builds bullet lines for a section, capped at NOTIFY_MAX_TICKERS_PER_SECTION."""
+    """
+    Builds bullet lines for a section. NOTE: per explicit instruction, every
+    qualifying stock is included in the full section list — nothing is
+    dropped to make room for the Top 5 leaderboard, which is purely an
+    additional summary built from this same data, not a replacement for it.
+    The NOTIFY_MAX_TICKERS_PER_SECTION cap below is the same display cap
+    that existed before this redesign (unrelated to the leaderboard).
+    """
     if df.empty:
         return ["  (none today)"]
     capped = df.head(config.NOTIFY_MAX_TICKERS_PER_SECTION)
@@ -130,27 +137,92 @@ def build_combo_buckets(combined_df: pd.DataFrame) -> dict[str, list[str]]:
     }
 
 
+def build_top5_leaderboard(combined_df: pd.DataFrame, smallmicro_df: pd.DataFrame) -> list[str]:
+    """
+    Top 5 leaderboard — a summary line, NOT a replacement for the full
+    section lists below it. Pulls from the same Elite + SmallMicro
+    qualifying rows already computed in build_elite_section /
+    build_smallmicro_section, ranked by score across both (both scores are
+    0-100 scales, so directly comparable). Combo-bucket entries have no
+    single "score" field, so they are not part of this leaderboard — they
+    are still fully listed in Section 3 below.
+    """
+    entries = []
+
+    if not combined_df.empty and "EliteCompounderScore" in combined_df.columns:
+        elite = combined_df[combined_df["EliteCompounderScore"] >= config.ELITE_NOTIFY_SCORE_THRESHOLD]
+        for _, row in elite.iterrows():
+            entries.append((row.get("ticker", "?"), row.get("EliteCompounderScore", 0)))
+
+    if not smallmicro_df.empty and "smallmicro_strict_pass" in smallmicro_df.columns:
+        strict = smallmicro_df[smallmicro_df["smallmicro_strict_pass"] == True]  # noqa: E712
+        for _, row in strict.iterrows():
+            entries.append((row.get("ticker", "?"), row.get("smallmicro_score", 0)))
+
+    if not entries:
+        return ["  (no qualifying stocks today)"]
+
+    entries.sort(key=lambda x: x[1], reverse=True)
+    top5 = entries[:5]
+    medals = ["🥇", "🥈", "🥉"]
+    lines = []
+    for i, (ticker, score) in enumerate(top5):
+        prefix = medals[i] if i < 3 else f"{i + 1}."
+        lines.append(f"{prefix} {ticker} — {score:.0f}")
+    return lines
+
+
+def _count_qualifying(combined_df: pd.DataFrame, smallmicro_df: pd.DataFrame) -> dict[str, int]:
+    """Real counts for the summary line — same gating logic as each section, just counted."""
+    elite_n = 0
+    if not combined_df.empty and "EliteCompounderScore" in combined_df.columns:
+        elite_n = int((combined_df["EliteCompounderScore"] >= config.ELITE_NOTIFY_SCORE_THRESHOLD).sum())
+
+    smallmicro_n = 0
+    if not smallmicro_df.empty and "smallmicro_strict_pass" in smallmicro_df.columns:
+        smallmicro_n = int((smallmicro_df["smallmicro_strict_pass"] == True).sum())  # noqa: E712
+
+    combo_n = 0
+    required_cols = {"obv_leadership_rank", "rs_rank"}
+    if not combined_df.empty and required_cols.issubset(combined_df.columns):
+        combo_n = int(
+            (
+                (combined_df["obv_leadership_rank"] > config.NOTIFY_COMBO_RANK_THRESHOLD)
+                & (combined_df["rs_rank"] > config.NOTIFY_COMBO_RANK_THRESHOLD)
+            ).sum()
+        )
+
+    return {"elite": elite_n, "smallmicro": smallmicro_n, "combo": combo_n}
+
+
 def build_message(combined_df: pd.DataFrame, smallmicro_df: pd.DataFrame, run_date: str) -> str:
-    """Assembles the full plain-text message from the three sections. Shared by both channels."""
+    """Assembles the full message text from the three sections plus a Top 5 leaderboard. Shared by both channels."""
     elite_lines = build_elite_section(combined_df)
     smallmicro_lines = build_smallmicro_section(smallmicro_df)
     combo = build_combo_buckets(combined_df)
+    top5_lines = build_top5_leaderboard(combined_df, smallmicro_df)
+    counts = _count_qualifying(combined_df, smallmicro_df)
 
     parts = [
-        f"Stock Scanner — {run_date}",
+        f"🚨 ASHISH CAPITAL SCANNER — {run_date}",
+        "━━━━━━━━━━━━━━━━━━━━",
+        f"📊 Elite: {counts['elite']} | SmallMicro: {counts['smallmicro']} | Fresh Combo: {counts['combo']}",
         "",
-        f"1. Elite (score >= {config.ELITE_NOTIFY_SCORE_THRESHOLD})",
+        "🏆 TOP 5 TODAY",
+        *top5_lines,
+        "━━━━━━━━━━━━━━━━━━━━",
+        f"🔥 ELITE (score >= {config.ELITE_NOTIFY_SCORE_THRESHOLD})",
         *elite_lines,
-        "",
-        "2. SmallMicro — strict pass",
+        "━━━━━━━━━━━━━━━━━━━━",
+        "🧬 SMALLMICRO — STRICT PASS",
         *smallmicro_lines,
-        "",
-        "3. Fresh OBV+RS combo (NSE500/S&P500)",
-        "Breakout (0-15% off high):",
+        "━━━━━━━━━━━━━━━━━━━━",
+        "🚀 FRESH OBV+RS COMBO (NSE500/S&P500)",
+        "🟢 Breakout (0-15% off high)",
         *combo["breakout"],
-        "Confirmed (15-25% off high):",
+        "🟡 Confirmed (15-25% off high)",
         *combo["confirmed"],
-        "Early (>25% off high):",
+        "🔵 Early (>25% off high)",
         *combo["early"],
     ]
     return "\n".join(parts)
