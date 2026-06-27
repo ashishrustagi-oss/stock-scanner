@@ -147,6 +147,23 @@ def _extract_pct_from_xbrl(xbrl_bytes: bytes) -> dict:
     identifier — context `id` strings are just local labels and could
     differ across filing software vendors even when the underlying
     taxonomy concept is identical.
+
+    UNIT SCALE: also handles a real-world inconsistency where some filings
+    store this fact as a true fraction (0.0978) and others store it
+    already as a percentage (5.54) — see the inline comment above the
+    `value = raw_value if raw_value > 1.5 else raw_value * 100` line for
+    the detection heuristic and how it was discovered (ABBOTINDIA, a real
+    production run).
+
+    KNOWN SEPARATE LIMITATION (not fixed by this function — a filing-LIST
+    issue, not a parsing issue): for some symbols, the `nse` library's
+    shareholding() call appears to only return filings up through ~2018,
+    even though the company has obviously filed every quarter since (e.g.
+    ABBOTINDIA — verified via diagnostics/shareholding_api_probe_v7.py).
+    This means quarter_end/data for those symbols will be 8 years stale
+    rather than current. Root cause not yet identified (NSE-side data gap
+    vs. a symbol-matching quirk) — if it turns out to affect many symbols
+    rather than being rare/isolated, worth a follow-up investigation.
     """
     from lxml import etree
 
@@ -189,9 +206,29 @@ def _extract_pct_from_xbrl(xbrl_bytes: bytes) -> dict:
         if not text:
             continue
         try:
-            value = float(text) * 100  # XBRL stores this as a fraction (0.0978), not a percentage
+            raw_value = float(text)
         except ValueError:
             continue
+
+        # UNIT-SCALE BUG FIX: most filings (verified: RELIANCE 31-MAR-2026)
+        # store this as a true fraction (0.0978 = 9.78%), but some older
+        # filings from different filing software (verified: ABBOTINDIA's
+        # 2016-2018 filings) store it already AS a percentage (5.54 means
+        # 5.54%, not 554%). Blindly multiplying by 100 produced an
+        # impossible 554.0 for ABBOTINDIA — caught via a real production
+        # run, see diagnostics/shareholding_api_probe_v7.py.
+        #
+        # A holding percentage for ANY single category can never exceed
+        # 100, and in practice for MF/FII specifically is virtually always
+        # well under 50 — so any raw value already above 1.5 is assumed to
+        # already be a percentage (no multiplication), while anything at
+        # or below 1.5 is assumed to be a fraction (multiply by 100). The
+        # 1.5 threshold (rather than 1.0) gives a small safety margin for
+        # genuine fractional values very close to but not exceeding 1.0,
+        # without being so high that it would misclassify a real small
+        # percentage-scale value (e.g. a true 1.2% holding stored as 1.2,
+        # not 0.012) as a fraction.
+        value = raw_value if raw_value > 1.5 else raw_value * 100
 
         context_ref = elem.get("contextRef", "")
         member = context_to_member.get(context_ref, "")
