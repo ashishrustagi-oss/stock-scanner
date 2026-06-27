@@ -1,0 +1,393 @@
+diff --git a/config.py b/config.py
+index 3b9ac72..86859da 100644
+--- a/config.py
++++ b/config.py
+@@ -174,10 +174,13 @@ FUNDAMENTALS_CACHE_PATH = "cache/fundamentals_cache.json"
+ # ----------------------------------------------------------------------------
+ # MF / FII SHAREHOLDING PATTERN (highest-risk module — see shareholding.py)
+ # ----------------------------------------------------------------------------
+-# Best-effort NSE corporate-filings endpoint for shareholding pattern filings.
+-# {symbol} is substituted with the bare NSE symbol (no .NS suffix). This is
+-# the single most likely thing to need fixing first if nothing resolves —
+-# check the Actions log for the actual HTTP status/response on a failure.
++# DEPRECATED — kept only so old cache entries / external references don't
++# break on a missing name. This endpoint was a guessed URL that turned out
++# to be dead (confirmed 404 even after fixing an underlying WAF/TLS-
++# fingerprint block — see diagnostics/shareholding_api_probe_*.py). The
++# module now uses the maintained `nse` library (pip install nse) instead,
++# which fetches the real filing list and a working XBRL attachment URL per
++# quarter. Not used anywhere in shareholding.py anymore.
+ NSE_SHAREHOLDING_API_URL = "https://www.nseindia.com/api/corporate-shareholding-pattern?index=equities&symbol={symbol}"
+ SHAREHOLDING_CACHE_PATH = "cache/shareholding_history.json"
+ SHAREHOLDING_CACHE_MAX_AGE_DAYS = 75   # ~quarterly; avoids re-fetching every day
+diff --git a/requirements.txt b/requirements.txt
+index 63d208b..147df27 100644
+--- a/requirements.txt
++++ b/requirements.txt
+@@ -6,3 +6,4 @@ google-auth>=2.30
+ requests>=2.31
+ pdfplumber>=0.11
+ lxml>=5.0
++nse>=3.1.0
+diff --git a/shareholding.py b/shareholding.py
+index 195ed97..406bf4b 100644
+--- a/shareholding.py
++++ b/shareholding.py
+@@ -9,11 +9,25 @@ pattern data has no clean free API. NSE publishes it as quarterly regulatory
+ filings (SEBI-mandated XBRL, sometimes with a PDF attachment) per company —
+ closer to scraping a government filing than calling a price API. This module:
+ 
+-  1. Queries NSE's corporate-filings API for each symbol's shareholding
+-     pattern filings (best-effort endpoint — see config.NSE_SHAREHOLDING_API_URL;
+-     fix this first if nothing resolves).
+-  2. Tries to parse the most recent filing's XBRL attachment (structured XML,
+-     more reliable to parse than a PDF if available).
++  1. Uses the maintained `nse` library (pip install nse) to fetch each
++     symbol's shareholding pattern filing list, including a direct XBRL
++     attachment URL per quarter. (PREVIOUSLY: hand-rolled requests against
++     a guessed endpoint, config.NSE_SHAREHOLDING_API_URL, that turned out
++     to be a dead URL — confirmed via diagnostics/shareholding_api_probe_*.py
++     to 404 even after fixing an earlier TLS-fingerprint WAF block. This
++     was the root cause of mf_holding_pct/fii_holding_pct being 100% blank
++     for every NSE500 ticker in production. The `nse` library handles
++     session/cookie/fingerprint concerns and points at NSE's real,
++     currently-working filing-list mechanism instead.)
++  2. Parses the most recent filing's XBRL attachment using a CONTEXT-BASED
++     extraction (see _extract_pct_from_xbrl docstring) — this also
++     replaces an earlier, fundamentally incorrect approach that matched on
++     the percentage FACT's own tag name. Every category in a real filing
++     (Promoter, MF, FII, Banks, etc.) uses the identical generic tag; the
++     category lives in a separate <context> element instead. The old
++     approach could never have worked, regardless of which endpoint it
++     was pointed at — this was verified directly against a real RELIANCE
++     filing during the fix.
+   3. Falls back to parsing the PDF attachment's summary table if XBRL isn't
+      available, using keyword-based row matching since exact table layouts
+      vary by filing software.
+@@ -21,10 +35,8 @@ closer to scraping a government filing than calling a price API. This module:
+      so quarter-over-quarter trend (MF_Holding_Increasing / FII_Holding_Increasing)
+      can be computed once at least 2 quarters are on file.
+ 
+-Expect this to need fixing after the first live run, the same way the sector
+-index mapping did — likely more so. If it fails entirely, every stock will
+-just show data_quality="missing" for these fields; nothing else in the
+-pipeline is affected.
++mf_pct / fii_pct are stored as PERCENTAGES (e.g. 9.78, not 0.0978) — the
++raw XBRL fact is a fraction; _extract_pct_from_xbrl() multiplies by 100.
+ """
+ 
+ import datetime
+@@ -33,58 +45,39 @@ import json
+ import logging
+ import os
+ import re
++import tempfile
+ import time
+ 
+ import pandas as pd
+ import requests
++from nse import NSE
+ 
+ import config
+ 
+ logger = logging.getLogger(__name__)
+ 
+-NSE_HEADERS = {
+-    "User-Agent": (
+-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+-        "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+-    ),
+-    "Accept": "application/json, text/plain, */*",
+-    "Accept-Language": "en-US,en;q=0.9",
+-}
+-
+-# Keywords used to find the right rows/tags regardless of exact filing-software
+-# wording (e.g. "Foreign Portfolio Investors", "FPI", "FII" all appear across
+-# different filers' submissions).
++# Kept only for the PDF-parsing fallback path's keyword matching — no
++# longer used for XBRL (see _extract_pct_from_xbrl, which now matches on
++# the standardized taxonomy member name via <context>, not free-text
++# keywords in a tag name).
+ MF_KEYWORDS = ["mutual fund"]
+ FII_KEYWORDS = ["foreign portfolio investor", "foreign institutional investor", "fii", "fpi"]
+ 
+ 
+-def _get_session() -> requests.Session:
+-    session = requests.Session()
+-    session.headers.update(NSE_HEADERS)
+-    session.get(config.NSE_HOME_URL, timeout=10)  # primes cookies, same pattern as universe.py
+-    return session
+-
+-
+-def _get_filing_list(session: requests.Session, nse_symbol: str) -> list[dict]:
++def _get_filing_list(nse_client: NSE, nse_symbol: str) -> list[dict]:
+     """
+-    Returns a list of filing metadata dicts for the symbol's shareholding
+-    pattern submissions, most recent first. Each dict's exact keys depend on
+-    NSE's API response — we handle that defensively in _pick_latest_filing.
++    Returns the symbol's quarterly shareholding-pattern filings via the
++    `nse` library, most recent first (this is the library's own ordering;
++    NSE.shareholding() docstring: "Returns quarterly shareholding details
++    with the latest quarter first."). Each dict's keys (date, xbrl, etc.)
++    are the library's own field names, matched against in
++    _pick_latest_filing / _get_attachment_url below.
+     """
+-    url = config.NSE_SHAREHOLDING_API_URL.format(symbol=nse_symbol)
+-    resp = session.get(url, timeout=15)
+-    resp.raise_for_status()
+-    data = resp.json()
+-    # NSE list-style corporate-filing endpoints commonly nest results under
+-    # a "data" key; fall back to the raw payload if it's already a list.
+-    if isinstance(data, dict):
+-        for key in ("data", "shareholding", "result"):
+-            if key in data and isinstance(data[key], list):
+-                return data[key]
++    try:
++        return nse_client.shareholding(nse_symbol)
++    except Exception as exc:  # noqa: BLE001
++        logger.debug("Shareholding filing-list fetch failed for %s: %s", nse_symbol, exc)
+         return []
+-    if isinstance(data, list):
+-        return data
+-    return []
+ 
+ 
+ def _pick_latest_filing(filings: list[dict]) -> dict | None:
+@@ -115,10 +108,45 @@ def _get_attachment_url(filing: dict) -> str | None:
+ 
+ def _extract_pct_from_xbrl(xbrl_bytes: bytes) -> dict:
+     """
+-    Flexible XBRL/XML parse: looks for any tag whose (namespace-stripped) name
+-    contains both a category keyword (mutual fund / FII-FPI) and a number that
+-    looks like a holding percentage, rather than relying on exact tag paths
+-    which vary across filing software vendors.
++    Context-based XBRL parse.
++
++    IMPORTANT — this replaces an earlier version that matched on the
++    PERCENTAGE FACT's own tag name (e.g. looking for "mutualfund" inside
++    the tag). That approach was fundamentally wrong and is why this module
++    returned mf_pct/fii_pct = None for 100% of NSE500 tickers in production
++    (verified directly against a real filing — see diagnostics/
++    shareholding_api_probe_v4/v5/v6.py and the conversation that produced
++    this fix). In real NSE/BSE shareholding-pattern XBRL filings, EVERY
++    category (Promoter, Mutual Funds, FII, Banks, Insurance, etc.) uses the
++    IDENTICAL generic fact tag —
++    "ShareholdingAsAPercentageOfTotalNumberOfShares" — repeated once per
++    category row. The category itself lives in a separate <context>
++    element, referenced by the fact's contextRef attribute, via an
++    <explicitMember dimension="...:CategoryOfShareholdersAxis">
++    ...Member</explicitMember> child using the standardized BSE/NSE XBRL
++    taxonomy (namespace prefix typically "in-bse-shp").
++
++    Verified against a real RELIANCE filing (31-MAR-2026 quarter):
++      - MF holding  -> context whose explicitMember is
++        "...:MutualFundsOrUTIMember" (NOT the "_Context15"/"_Context16"
++        per-shareholder-row variants under the same category, which are
++        already summed INTO this headline figure — using them too would
++        double-count).
++      - FII holding -> context whose explicitMember is
++        "...:InstitutionsForeignMember" — this is the aggregate "Total
++        Foreign Institutions" rollup (confirmed ≈ sum of its own
++        CategoryOne + CategoryTwo + OtherInstitutionsForeign
++        sub-contexts), chosen over summing those sub-categories manually
++        because it's simpler and matches how MF/FII % is commonly reported
++        on financial sites (Screener, Trendlyne, etc.) — see conversation
++        for the explicit choice between these two definitions.
++
++    Matching is done on the explicitMember text (the standardized taxonomy
++    element name) rather than the locally-chosen context `id` attribute,
++    since the taxonomy member name is the more stable, filer-independent
++    identifier — context `id` strings are just local labels and could
++    differ across filing software vendors even when the underlying
++    taxonomy concept is identical.
+     """
+     from lxml import etree
+ 
+@@ -129,20 +157,50 @@ def _extract_pct_from_xbrl(xbrl_bytes: bytes) -> dict:
+         logger.debug("XBRL parse failed: %s", exc)
+         return result
+ 
++    # Step 1: build context_id -> explicitMember text (e.g.
++    # "in-bse-shp:MutualFundsOrUTIMember"), lowercased for matching.
++    context_to_member = {}
+     for elem in root.iter():
+         tag = etree.QName(elem).localname.lower() if elem.tag is not None else ""
++        if tag != "context":
++            continue
++        cid = elem.get("id", "")
++        if not cid:
++            continue
++        for sub in elem.iter():
++            sub_tag = etree.QName(sub).localname.lower() if sub.tag is not None else ""
++            if "explicitmember" in sub_tag and sub.text:
++                context_to_member[cid] = sub.text.strip().lower()
++                break
++
++    # Step 2: walk the headline percentage facts, look up each one's
++    # category via its contextRef, and assign to mf_pct/fii_pct using the
++    # first exact match found (there should only ever be one "Mutual
++    # Funds" aggregate context and one "Foreign Institutions" aggregate
++    # context per filing).
++    MF_MEMBER_SUFFIX = "mutualfundsorutimember"
++    FII_MEMBER_SUFFIX = "institutionsforeignmember"
++
++    for elem in root.iter():
++        tag = etree.QName(elem).localname.lower() if elem.tag is not None else ""
++        if tag != "shareholdingasapercentageoftotalnumberofshares":
++            continue
+         text = (elem.text or "").strip()
+         if not text:
+             continue
+         try:
+-            value = float(text)
++            value = float(text) * 100  # XBRL stores this as a fraction (0.0978), not a percentage
+         except ValueError:
+             continue
+-        if "percentage" not in tag and "pct" not in tag:
++
++        context_ref = elem.get("contextRef", "")
++        member = context_to_member.get(context_ref, "")
++        if not member:
+             continue
+-        if any(k.replace(" ", "") in tag for k in ["mutualfund"]) and result["mf_pct"] is None:
++
++        if member.endswith(MF_MEMBER_SUFFIX) and result["mf_pct"] is None:
+             result["mf_pct"] = value
+-        if any(k.replace(" ", "") in tag for k in ["foreignportfolioinvestor", "foreigninstitutionalinvestor", "fii", "fpi"]) and result["fii_pct"] is None:
++        elif member.endswith(FII_MEMBER_SUFFIX) and result["fii_pct"] is None:
+             result["fii_pct"] = value
+ 
+     return result
+@@ -179,37 +237,38 @@ def _extract_pct_from_pdf(pdf_bytes: bytes) -> dict:
+     return result
+ 
+ 
+-def _fetch_one(nse_symbol: str, session: requests.Session) -> dict:
++def _fetch_one(nse_symbol: str, nse_client: NSE, tmp_dir: str) -> dict:
+     out = {
+         "ticker": nse_symbol, "mf_pct": None, "fii_pct": None,
+         "quarter_end": None, "data_quality": "missing",
+     }
+     try:
+-        filings = _get_filing_list(session, nse_symbol)
++        filings = _get_filing_list(nse_client, nse_symbol)
+         latest = _pick_latest_filing(filings)
+         if not latest:
+             return out
+ 
+         attachment_url = _get_attachment_url(latest)
+         out["quarter_end"] = (
+-            latest.get("toDate") or latest.get("period") or latest.get("quarterEnded")
++            latest.get("date") or latest.get("toDate") or latest.get("period") or latest.get("quarterEnded")
+         )
+ 
+         if not attachment_url:
+             return out
+ 
+-        resp = session.get(attachment_url, timeout=20)
+-        resp.raise_for_status()
++        saved_path = nse_client.download_document(attachment_url, folder=tmp_dir)
++        with open(saved_path, "rb") as f:
++            content = f.read()
+ 
+         if attachment_url.lower().endswith((".xml", ".xbrl")):
+-            parsed = _extract_pct_from_xbrl(resp.content)
++            parsed = _extract_pct_from_xbrl(content)
+         elif attachment_url.lower().endswith(".pdf"):
+-            parsed = _extract_pct_from_pdf(resp.content)
++            parsed = _extract_pct_from_pdf(content)
+         else:
+             # Unknown extension — try XBRL parse first (cheap), then PDF
+-            parsed = _extract_pct_from_xbrl(resp.content)
++            parsed = _extract_pct_from_xbrl(content)
+             if parsed["mf_pct"] is None and parsed["fii_pct"] is None:
+-                parsed = _extract_pct_from_pdf(resp.content)
++                parsed = _extract_pct_from_pdf(content)
+ 
+         out["mf_pct"] = parsed["mf_pct"]
+         out["fii_pct"] = parsed["fii_pct"]
+@@ -283,48 +342,48 @@ def get_shareholding_trends(nse_symbols: list[str]) -> dict:
+     )
+ 
+     if to_fetch:
+-        session = _get_session()
+         start_time = time.time()
+         processed = 0
+ 
+-        for i, sym in enumerate(to_fetch):
+-            if time.time() - start_time > config.SHAREHOLDING_MAX_RUN_SECONDS:
+-                logger.warning(
+-                    "Shareholding fetch hit the %ds time budget after %d/%d — "
+-                    "stopping early, remainder will be picked up on a future run",
+-                    config.SHAREHOLDING_MAX_RUN_SECONDS, i, len(to_fetch),
+-                )
+-                break
+-
+-            result = _fetch_one(sym, session)
+-            entries = history.setdefault(sym, [])
+-            quarter_end = result["quarter_end"]
+-            already_have = any(e.get("quarter_end") == quarter_end for e in entries) if quarter_end else False
+-
+-            if result["mf_pct"] is not None or result["fii_pct"] is not None:
+-                if not already_have:
++        with tempfile.TemporaryDirectory() as tmp_dir, NSE(tmp_dir) as nse_client:
++            for i, sym in enumerate(to_fetch):
++                if time.time() - start_time > config.SHAREHOLDING_MAX_RUN_SECONDS:
++                    logger.warning(
++                        "Shareholding fetch hit the %ds time budget after %d/%d — "
++                        "stopping early, remainder will be picked up on a future run",
++                        config.SHAREHOLDING_MAX_RUN_SECONDS, i, len(to_fetch),
++                    )
++                    break
++
++                result = _fetch_one(sym, nse_client, tmp_dir)
++                entries = history.setdefault(sym, [])
++                quarter_end = result["quarter_end"]
++                already_have = any(e.get("quarter_end") == quarter_end for e in entries) if quarter_end else False
++
++                if result["mf_pct"] is not None or result["fii_pct"] is not None:
++                    if not already_have:
++                        entries.append({
++                            "quarter_end": quarter_end,
++                            "mf_pct": result["mf_pct"],
++                            "fii_pct": result["fii_pct"],
++                            "fetched_on": today.isoformat(),
++                        })
++                        entries.sort(key=lambda e: e.get("quarter_end") or "")
++                else:
++                    # Record the attempt even on failure (with no figures), so a
++                    # permanently-failing ticker is retried after the normal
++                    # refresh interval instead of every single run forever.
+                     entries.append({
+-                        "quarter_end": quarter_end,
+-                        "mf_pct": result["mf_pct"],
+-                        "fii_pct": result["fii_pct"],
++                        "quarter_end": None, "mf_pct": None, "fii_pct": None,
+                         "fetched_on": today.isoformat(),
+                     })
+-                    entries.sort(key=lambda e: e.get("quarter_end") or "")
+-            else:
+-                # Record the attempt even on failure (with no figures), so a
+-                # permanently-failing ticker is retried after the normal
+-                # refresh interval instead of every single run forever.
+-                entries.append({
+-                    "quarter_end": None, "mf_pct": None, "fii_pct": None,
+-                    "fetched_on": today.isoformat(),
+-                })
+-
+-            processed += 1
+-            if processed % config.SHAREHOLDING_SAVE_EVERY_N == 0:
+-                _save_history(history)
+-                logger.info("Shareholding fetch progress: %d/%d (saved)", processed, len(to_fetch))
+-
+-            time.sleep(config.SHAREHOLDING_SLEEP_SECONDS)
++
++                processed += 1
++                if processed % config.SHAREHOLDING_SAVE_EVERY_N == 0:
++                    _save_history(history)
++                    logger.info("Shareholding fetch progress: %d/%d (saved)", processed, len(to_fetch))
++
++                time.sleep(config.SHAREHOLDING_SLEEP_SECONDS)
+ 
+         _save_history(history)  # final save covers any remainder since the last checkpoint
+         logger.info("Shareholding fetch finished this run: %d processed and saved", processed)

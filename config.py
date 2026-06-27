@@ -174,10 +174,13 @@ FUNDAMENTALS_CACHE_PATH = "cache/fundamentals_cache.json"
 # ----------------------------------------------------------------------------
 # MF / FII SHAREHOLDING PATTERN (highest-risk module — see shareholding.py)
 # ----------------------------------------------------------------------------
-# Best-effort NSE corporate-filings endpoint for shareholding pattern filings.
-# {symbol} is substituted with the bare NSE symbol (no .NS suffix). This is
-# the single most likely thing to need fixing first if nothing resolves —
-# check the Actions log for the actual HTTP status/response on a failure.
+# DEPRECATED — kept only so old cache entries / external references don't
+# break on a missing name. This endpoint was a guessed URL that turned out
+# to be dead (confirmed 404 even after fixing an underlying WAF/TLS-
+# fingerprint block — see diagnostics/shareholding_api_probe_*.py). The
+# module now uses the maintained `nse` library (pip install nse) instead,
+# which fetches the real filing list and a working XBRL attachment URL per
+# quarter. Not used anywhere in shareholding.py anymore.
 NSE_SHAREHOLDING_API_URL = "https://www.nseindia.com/api/corporate-shareholding-pattern?index=equities&symbol={symbol}"
 SHAREHOLDING_CACHE_PATH = "cache/shareholding_history.json"
 SHAREHOLDING_CACHE_MAX_AGE_DAYS = 75   # ~quarterly; avoids re-fetching every day
