@@ -249,9 +249,35 @@ SIGNAL_DEFINITIONS = {
     # positive result (+33.78pp at 12m, n=270, vs. the 1st run's +33.08pp,
     # n=104) — close enough across two independent samples to treat as a
     # real, confirmed finding rather than a fluke, clearing this project's
-    # own two-run standard. Relabeled accordingly above. The
-    # sector-concentration caveat (not yet controlled for) is the main
-    # open question, not whether the positive result itself is real.
+    # own two-run standard. Relabeled accordingly above. A 3rd run
+    # (29-06-2026) held again (+34.18pp, n=271) — three consecutive runs
+    # within a 1.1pp band of each other. The sector-concentration caveat
+    # (not yet controlled for) remains the main open question, not
+    # whether the positive result itself is real.
+
+    # Range Position Divergence (29-06-2026, see README) — a genuinely
+    # different metric from obv_price_divergence/obv_calm_continuation
+    # above: a snapshot comparison of price_52w_range_pct vs
+    # obv_52w_range_pct, no peak-date anchor at all. NOT YET BACKTESTED —
+    # these two signals are the first attempt. Percentile-ranked WITHIN
+    # each snapshot (same pattern as the SmallMicroScore component
+    # signals below) rather than a fixed magnitude threshold, since
+    # there's no existing evidence yet for what a "meaningful" raw value
+    # of this metric looks like across market regimes — self-calibrating
+    # to each snapshot's actual distribution is the more honest default
+    # until real backtest evidence says otherwise.
+    #
+    # Hoped-for direction, by the same logic as the rest of this system:
+    # "obv_ahead" (OBV's range-position notably exceeds price's) is the
+    # bullish lean, same "smart money ahead of price" story as
+    # obv_acceleration_quiet_base — hoped-for result is POSITIVE excess
+    # return. "price_ahead" (price's range-position notably exceeds OBV's
+    # — a rally without matching volume conviction) is the cautionary
+    # lean — by the SAME logic that made obv_calm_continuation's caution
+    # hypothesis turn out backwards on real data, don't assume this one's
+    # direction either; let the backtest say what it actually predicts.
+    "range_position_divergence_obv_ahead_top_decile": lambda df: sc._pct_rank(df["range_position_divergence"]) >= config.SMALLMICRO_STRICT_TOP_DECILE_THRESHOLD,
+    "range_position_divergence_price_ahead_bottom_decile": lambda df: sc._pct_rank(df["range_position_divergence"]) <= (100 - config.SMALLMICRO_STRICT_TOP_DECILE_THRESHOLD),
 }
 
 # SmallMicroScore signals — separate dict, used only when
@@ -287,6 +313,10 @@ SMALLMICRO_SIGNAL_DEFINITIONS = {
     # on the SmallMicro universe.
     "smallmicro_obv_acceleration_quiet_base": lambda df: df["obv_acceleration_quiet_base"] == "🟢",
     "smallmicro_obv_calm_continuation": lambda df: df["obv_calm_continuation"] == "🟢",
+    # Range Position Divergence (29-06-2026, see README) — same signals as
+    # SIGNAL_DEFINITIONS above, NOT YET BACKTESTED on either universe.
+    "smallmicro_range_position_divergence_obv_ahead_top_decile": lambda df: sc._pct_rank(df["range_position_divergence"]) >= config.SMALLMICRO_STRICT_TOP_DECILE_THRESHOLD,
+    "smallmicro_range_position_divergence_price_ahead_bottom_decile": lambda df: sc._pct_rank(df["range_position_divergence"]) <= (100 - config.SMALLMICRO_STRICT_TOP_DECILE_THRESHOLD),
 }
 
 
