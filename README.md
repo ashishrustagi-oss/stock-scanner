@@ -774,10 +774,31 @@ Same sign convention as everywhere else in this system: positive = OBV
 running ahead of price (accumulation building while price lags — bullish
 lean, same "smart money ahead of price" logic as
 `obv_acceleration_quiet_base`); negative = price running ahead of OBV
-(a rally without matching volume conviction — cautionary lean). **Not
-backtested yet** — same unvalidated status as the rest of the
-chart-study-derived OBV signals in this section, until it's been through
-`backtest.py`.
+(a rally without matching volume conviction — cautionary lean).
+
+**Backtested (29-06-2026, NSE500, full ~500-ticker universe, 5y lookback):
+direction is correct, but neither bucket clears baseline.**
+`range_position_divergence_obv_ahead_top_decile` (the hypothesized bullish
+lean) showed +20.20pp 12m excess, n=1,555; `..._price_ahead_bottom_decile`
+(the hypothesized cautionary lean) showed +13.92pp, n=1,520 — OBV-ahead
+genuinely beats price-ahead by a real 6.28pp gap, so the basic direction
+held, unlike `obv_calm_continuation`'s complete reversal below. But
+**both buckets underperform `baseline_all_stocks`'s +22.39pp** — even the
+"good" bucket trails doing nothing at all by ~2.2pp. Likely cause: this
+metric is a single-day snapshot with no persistence requirement, unlike
+`obv_calm_continuation` (which needs the pattern to hold for 15+ of 20
+consecutive days) — extreme percentile buckets on a snapshot metric catch
+real signal but also a lot of noise (a stock can sit at an arbitrary
+range-percentile for reasons unrelated to genuine accumulation/distribution).
+
+**Deliberately left as a single-day snapshot rather than redesigned to
+require sustained persistence** (the fix that worked for
+`obv_calm_continuation`) — decided this column's job is to be a quick
+eyeball reference alongside the validated signals, not a backtested
+trading signal in its own right, so it doesn't need to clear that bar.
+Worth revisiting with the sustained-pattern treatment later if you ever
+want to push it toward being an actual standalone signal rather than
+informational context.
 
 ### OBV Acceleration / Quiet Base (25-06-2026)
 From reviewing Redington, RR Kabel, and HDFC AMC charts: in each case, OBV

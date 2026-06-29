@@ -258,24 +258,24 @@ SIGNAL_DEFINITIONS = {
     # Range Position Divergence (29-06-2026, see README) — a genuinely
     # different metric from obv_price_divergence/obv_calm_continuation
     # above: a snapshot comparison of price_52w_range_pct vs
-    # obv_52w_range_pct, no peak-date anchor at all. NOT YET BACKTESTED —
-    # these two signals are the first attempt. Percentile-ranked WITHIN
-    # each snapshot (same pattern as the SmallMicroScore component
+    # obv_52w_range_pct, no peak-date anchor at all. Percentile-ranked
+    # WITHIN each snapshot (same pattern as the SmallMicroScore component
     # signals below) rather than a fixed magnitude threshold, since
     # there's no existing evidence yet for what a "meaningful" raw value
-    # of this metric looks like across market regimes — self-calibrating
-    # to each snapshot's actual distribution is the more honest default
-    # until real backtest evidence says otherwise.
+    # of this metric looks like across market regimes.
     #
-    # Hoped-for direction, by the same logic as the rest of this system:
-    # "obv_ahead" (OBV's range-position notably exceeds price's) is the
-    # bullish lean, same "smart money ahead of price" story as
-    # obv_acceleration_quiet_base — hoped-for result is POSITIVE excess
-    # return. "price_ahead" (price's range-position notably exceeds OBV's
-    # — a rally without matching volume conviction) is the cautionary
-    # lean — by the SAME logic that made obv_calm_continuation's caution
-    # hypothesis turn out backwards on real data, don't assume this one's
-    # direction either; let the backtest say what it actually predicts.
+    # RESULT (29-06-2026, NSE500, full universe, 5y lookback): direction
+    # was correct (obv_ahead_top_decile +20.20pp 12m excess > price_ahead
+    # _bottom_decile +13.92pp, a real 6.28pp gap — the basic "OBV leading
+    # is better" intuition held, unlike obv_calm_continuation's complete
+    # reversal above) BUT both buckets underperformed baseline (+22.39pp)
+    # — likely because this is a single-day snapshot with no persistence
+    # requirement, unlike obv_calm_continuation's 15-of-20-day sustained
+    # check. Deliberately left as a snapshot rather than redesigned to
+    # require sustained persistence — this column's job is to be a quick
+    # eyeball reference, not a backtested trading signal, so it doesn't
+    # need to clear that bar. Revisit with the sustained-pattern treatment
+    # later if you ever want to push it toward being a real standalone signal.
     "range_position_divergence_obv_ahead_top_decile": lambda df: sc._pct_rank(df["range_position_divergence"]) >= config.SMALLMICRO_STRICT_TOP_DECILE_THRESHOLD,
     "range_position_divergence_price_ahead_bottom_decile": lambda df: sc._pct_rank(df["range_position_divergence"]) <= (100 - config.SMALLMICRO_STRICT_TOP_DECILE_THRESHOLD),
 }
@@ -314,7 +314,10 @@ SMALLMICRO_SIGNAL_DEFINITIONS = {
     "smallmicro_obv_acceleration_quiet_base": lambda df: df["obv_acceleration_quiet_base"] == "🟢",
     "smallmicro_obv_calm_continuation": lambda df: df["obv_calm_continuation"] == "🟢",
     # Range Position Divergence (29-06-2026, see README) — same signals as
-    # SIGNAL_DEFINITIONS above, NOT YET BACKTESTED on either universe.
+    # SIGNAL_DEFINITIONS above. First NSE500 run: direction correct (OBV-
+    # ahead beat price-ahead by ~6.3pp) but both buckets underperformed
+    # baseline — kept as a snapshot eyeball column, not redesigned for
+    # sustained persistence. Still untested specifically on NSE_SmallMicro.
     "smallmicro_range_position_divergence_obv_ahead_top_decile": lambda df: sc._pct_rank(df["range_position_divergence"]) >= config.SMALLMICRO_STRICT_TOP_DECILE_THRESHOLD,
     "smallmicro_range_position_divergence_price_ahead_bottom_decile": lambda df: sc._pct_rank(df["range_position_divergence"]) <= (100 - config.SMALLMICRO_STRICT_TOP_DECILE_THRESHOLD),
 }
