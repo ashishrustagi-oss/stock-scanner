@@ -7,7 +7,7 @@ had never had a synthetic-data smoketest before (the original NSE500
 backtest only ever ran against real, live data).
 
 Added specifically to verify the two new chart-study signals
-(obv_acceleration_quiet_base, obv_divergence_decaying, added 25-06-2026)
+(obv_acceleration_quiet_base, obv_calm_continuation (renamed 26-06-2026, was obv_divergence_decaying), added 25-06-2026)
 wire correctly into the main backtest path — both are computed inside
 metrics_builder.build_metrics_row(), so no changes to
 compute_signals_for_snapshot() itself were needed, but that assumption is
@@ -68,7 +68,7 @@ required_cols = {
     "composite_score", "EliteCompounderScore", "trend_birth_flag", "trend_death_flag",
     "obv_52w_high", "macd_early_bullish",
     "obv_acceleration_quiet_base", "obv_acceleration_basis",
-    "obv_divergence_decaying", "obv_divergence_decay_basis",
+    "obv_calm_continuation", "obv_calm_continuation_basis",
     "obv_slope_42d", "obv_slope_42d_recent_high",
 }
 missing = required_cols - set(sample_df.columns)
@@ -120,9 +120,9 @@ print(f"\nConfirmed: obv_acceleration_quiet_base ({n_compound}) == obv_accel_sub
       f"({n_accel_sub}) exactly — correct post-redesign behavior (quiet-price gate dropped, "
       f"quiet sub-condition sample size {n_quiet_sub} is no longer a constraint on the compound flag).")
 
-n_decay_compound = summary_df.loc[summary_df["signal"] == "obv_divergence_decaying", "sample_size"].iloc[0]
-n_decay_sub = summary_df.loc[summary_df["signal"] == "obv_decay_price_rising_subcondition_only", "sample_size"].iloc[0]
+n_decay_compound = summary_df.loc[summary_df["signal"] == "obv_calm_continuation", "sample_size"].iloc[0]
+n_decay_sub = summary_df.loc[summary_df["signal"] == "obv_calm_price_rising_subcondition_only", "sample_size"].iloc[0]
 assert n_decay_compound <= n_decay_sub, f"Compound decay flag ({n_decay_compound}) exceeds its price-rising sub-condition ({n_decay_sub})"
-print(f"Confirmed: obv_divergence_decaying ({n_decay_compound}) <= its price-rising sub-condition ({n_decay_sub}).")
+print(f"Confirmed: obv_calm_continuation ({n_decay_compound}) <= its price-rising sub-condition ({n_decay_sub}).")
 
 print("\nSMOKETEST PASSED - no exceptions")

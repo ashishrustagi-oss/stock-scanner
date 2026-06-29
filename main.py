@@ -265,6 +265,10 @@ DISPLAY_COLUMNS = [
     # Chart study additions
     "macd_early_bearish", "trend_death_flag", "trend_death_score",
     "obv_price_divergence", "obv_leadership_rank",
+    # Range Position Divergence (25-06-2026, different metric from
+    # obv_price_divergence above — not peak-anchored, a snapshot
+    # comparison of two independent 52w range positions; see README)
+    "price_52w_range_pct", "range_position_divergence",
     # OBV Acceleration / Quiet Base (chart-study, unvalidated — see README)
     "price_chg_13w", "obv_acceleration_quiet_base", "obv_acceleration_basis",
     # OBV Calm Continuation (RELABELED bullish signal, backtest-confirmed across 2 runs, mechanism only partially understood — see README)
@@ -295,6 +299,7 @@ RAW_DISPLAY_COLUMNS = [
     # OBV
     "obv_slope_20d", "obv_slope_50d", "obv_slope_200d", "obv_52w_range_pct",
     "obv_52w_high", "obv_26w_high", "obv_price_divergence",
+    "price_52w_range_pct", "range_position_divergence",
     "obv_slope_13w", "obv_slope_26w",
     # OBV Acceleration / Quiet Base (chart-study, unvalidated — see README)
     "price_chg_13w", "obv_acceleration_quiet_base", "obv_acceleration_basis",

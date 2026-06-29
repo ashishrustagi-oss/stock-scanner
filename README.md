@@ -746,6 +746,39 @@ much price has fallen. Positive = bullish (OBV held up better than price).
 least 5% (a stock that hasn't pulled back has nothing to diverge from) and
 the divergence exceeds 10 percentage points.
 
+### Range Position Divergence (29-06-2026)
+A genuinely DIFFERENT metric from `obv_price_divergence` above, not an
+alternate implementation of the same idea — built when a request to
+"replicate" the Pine Script dashboard's divergence reading actually
+specified a different formula. `obv_price_divergence` is anchored to one
+specific 52-week price-peak date and compares decline-since-that-date for
+both series. `range_position_divergence` has no peak-date anchor at all:
+it compares two independent 0-100 snapshots — `price_52w_range_pct`
+(where price sits in its own 52-week high/low range, mirroring the
+existing `obv_52w_range_pct`) vs. `obv_52w_range_pct` itself, today, full
+stop. `range_position_divergence = obv_52w_range_pct - price_52w_range_pct`.
+
+The two metrics can and do disagree, confirmed directly on the same
+synthetic test data used to validate the formula: one row showed
+`obv_price_divergence = 0.00` (no peak-anchored divergence at all) while
+`range_position_divergence = -63.69` (a large range-position gap) for the
+identical ticker on the identical day — price was sitting at its absolute
+52-week high while OBV was only at the 36th percentile of its own range,
+which the peak-anchored metric doesn't capture the same way. Both columns
+are kept side by side on purpose, not as redundant duplicates — see
+`indicators.price_52w_range_pct()` and `range_position_divergence()` for
+the exact mechanics and a worked comparison against POLYPLEX's real Pine
+dashboard reading.
+
+Same sign convention as everywhere else in this system: positive = OBV
+running ahead of price (accumulation building while price lags — bullish
+lean, same "smart money ahead of price" logic as
+`obv_acceleration_quiet_base`); negative = price running ahead of OBV
+(a rally without matching volume conviction — cautionary lean). **Not
+backtested yet** — same unvalidated status as the rest of the
+chart-study-derived OBV signals in this section, until it's been through
+`backtest.py`.
+
 ### OBV Acceleration / Quiet Base (25-06-2026)
 From reviewing Redington, RR Kabel, and HDFC AMC charts: in each case, OBV
 was quietly, steadily climbing for an extended stretch while price chopped

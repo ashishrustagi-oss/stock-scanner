@@ -114,6 +114,16 @@ def build_metrics_row(
         "obv_slope_13w":          obv_slope_13w_val,
         "obv_slope_26w":          obv_slope_26w_val,
         "obv_price_divergence":   ind.obv_price_divergence(close, obv_series),
+        # ── Range Position Divergence (25-06-2026 spec: compares price's
+        # 0-100 position in its own 52w range to OBV's 0-100 position in
+        # ITS own 52w range — a snapshot comparison, NOT anchored to a
+        # peak date the way obv_price_divergence above is. Genuinely
+        # different metric, kept as a separate column on purpose — see
+        # indicators.range_position_divergence() and README. ──
+        "price_52w_range_pct":     ind.price_52w_range_pct(close),
+        "range_position_divergence": ind.range_position_divergence(
+            ind.price_52w_range_pct(close), ind.obv_52w_range_pct(obv_series),
+        ),
         # ── OBV Acceleration / Quiet Base (chart-study, unvalidated — see
         # indicators.obv_acceleration_quiet_base() and README) ──
         "price_chg_13w":          price_chg_13w,

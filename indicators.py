@@ -365,6 +365,62 @@ def obv_52w_range_pct(obv_series: pd.Series) -> float:
     return float((window.iloc[-1] - lo) / rng * 100)
 
 
+def price_52w_range_pct(close: pd.Series) -> float:
+    """
+    Where is the current PRICE within its own 52-week (252-bar) range?
+    Returns 0-100: 100 = price is at its 52-week high, 0 = price is at its
+    52-week low. Same convention as obv_52w_range_pct() above (and built
+    for the same reason: range_position_divergence() below needs both on
+    an identical 0-100 scale to be directly comparable) — NOT the same
+    thing as pct_from_52w_high(), which measures distance below the peak
+    rather than position within the full range; pct_from_52w_high(0) and
+    price_52w_range_pct(100) both mean "at the 52w high," but the two
+    functions diverge everywhere else (e.g. a stock sitting exactly at its
+    52-week LOW returns 0.0 here, but a large negative number from
+    pct_from_52w_high — don't substitute one for the other elsewhere in
+    this codebase).
+    """
+    window = close.dropna().iloc[-252:]
+    if len(window) < 50:
+        return np.nan
+    lo, hi = window.min(), window.max()
+    rng = hi - lo
+    if rng == 0 or np.isnan(rng):
+        return np.nan
+    return float((window.iloc[-1] - lo) / rng * 100)
+
+
+def range_position_divergence(price_range_pct: float, obv_range_pct: float) -> float:
+    """
+    Compares where PRICE sits in its own 52-week high/low range to where
+    OBV sits in its own 52-week high/low range, expressed as a percentage
+    gap. Genuinely DIFFERENT from obv_price_divergence() elsewhere in this
+    file: that one is anchored to a single specific 52-week PRICE PEAK
+    DATE and compares decline-since-that-date for both series. This one
+    has no peak-date anchor at all — it's a snapshot comparison of two
+    independent 0-100 range positions, today, full stop. The two can and
+    do disagree on real stocks (confirmed on the live Pine dashboard:
+    POLYPLEX showed obv_price_divergence +25.47% while sitting at -23.66%
+    from its 52w high and obv_52w_range_pct in the 90s — a large
+    range-position gap in the same DIRECTION but not the same MAGNITUDE).
+    Both are kept as separate columns deliberately, not as alternate
+    implementations of the same idea — see README.
+
+    Positive = OBV is running AHEAD of price in their respective ranges
+    (accumulation building while price lags — bullish lean, by the same
+    "smart money ahead of price" logic as obv_acceleration_quiet_base).
+    Negative = price is running AHEAD of OBV (price climbing without
+    matching volume conviction — cautionary lean, the classic
+    "rally lacking volume confirmation" read).
+
+    Returns NaN if either input is NaN (insufficient 52-week history for
+    that series) rather than silently treating missing data as zero.
+    """
+    if pd.isna(price_range_pct) or pd.isna(obv_range_pct):
+        return np.nan
+    return float(obv_range_pct - price_range_pct)
+
+
 def avg_daily_traded_value(df: pd.DataFrame, window_days: int = 20) -> float:
     """
     Average daily traded value (price * volume) over the trailing
