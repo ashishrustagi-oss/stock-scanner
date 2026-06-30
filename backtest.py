@@ -402,7 +402,13 @@ def aggregate_results(long_df: pd.DataFrame, bench_df: pd.DataFrame, horizons_da
 
 def main():
     universe_label = config.BACKTEST_UNIVERSE
-    logger.info("Backtest starting — universe=%s, lookback=%dy", universe_label, config.BACKTEST_LOOKBACK_YEARS)
+    if config.BACKTEST_DATE_RANGE_MODE:
+        logger.info(
+            "Backtest starting — universe=%s, DATE-RANGE MODE: %s to %s",
+            universe_label, config.BACKTEST_DATE_RANGE_START, config.BACKTEST_DATE_RANGE_END,
+        )
+    else:
+        logger.info("Backtest starting — universe=%s, lookback=%dy", universe_label, config.BACKTEST_LOOKBACK_YEARS)
 
     if universe_label == "NSE500":
         uni_df = universe.get_nse500_universe()
@@ -436,23 +442,70 @@ def main():
         tickers = tickers[: config.BACKTEST_MAX_TICKERS]
     logger.info("Backtest universe size: %d tickers", len(tickers))
 
-    # Fetch with extended history for backtest purposes
-    original_period = config.PRICE_HISTORY_PERIOD
-    config.PRICE_HISTORY_PERIOD = f"{config.BACKTEST_LOOKBACK_YEARS + 2}y"  # +2y buffer for indicator warmup
-    price_data = data_fetch.fetch_price_history(tickers)
-    index_df = data_fetch.fetch_index_history(index_ticker)
-    config.PRICE_HISTORY_PERIOD = original_period
-    index_close = index_df["Close"]
+    if config.BACKTEST_DATE_RANGE_MODE:
+        # Fetch from (start - warmup buffer) through end, so indicators have
+        # real history before the FIRST snapshot date, not just within the
+        # window itself — same purpose as the "+2y buffer" in the other
+        # branch below, just date-based instead of relative.
+        warmup_start = (
+            pd.Timestamp(config.BACKTEST_DATE_RANGE_START)
+            - pd.DateOffset(years=int(config.BACKTEST_DATE_RANGE_WARMUP_YEARS), months=int((config.BACKTEST_DATE_RANGE_WARMUP_YEARS % 1) * 12))
+        ).strftime("%Y-%m-%d")
+        logger.info(
+            "Date-range backtest mode: window %s to %s (fetching from %s for warmup)",
+            config.BACKTEST_DATE_RANGE_START, config.BACKTEST_DATE_RANGE_END, warmup_start,
+        )
+        price_data = data_fetch.fetch_price_history_range(tickers, warmup_start, config.BACKTEST_DATE_RANGE_END)
+        index_df = data_fetch.fetch_index_history_range(index_ticker, warmup_start, config.BACKTEST_DATE_RANGE_END)
+        index_close = index_df["Close"]
 
-    # Monthly snapshot dates over the configured lookback, leaving enough
-    # room at the end for the longest forward-return horizon to resolve
-    all_dates = index_close.index
-    end_buffer_days = max(config.BACKTEST_HORIZONS_DAYS.values())
-    usable_dates = all_dates[: -end_buffer_days] if len(all_dates) > end_buffer_days else all_dates
-    start_date = usable_dates[-1] - pd.DateOffset(years=config.BACKTEST_LOOKBACK_YEARS)
-    snapshot_dates = pd.date_range(start=start_date, end=usable_dates[-1], freq=config.BACKTEST_SNAPSHOT_FREQ)
-    snapshot_dates = [d for d in snapshot_dates if d in all_dates] or \
-        [all_dates[all_dates.searchsorted(d)] for d in snapshot_dates if all_dates.searchsorted(d) < len(all_dates)]
+        all_dates = index_close.index
+        end_buffer_days = max(config.BACKTEST_HORIZONS_DAYS.values())
+        window_end = pd.Timestamp(config.BACKTEST_DATE_RANGE_END)
+        # Snapshot dates must stay within [start, end] AND leave room before
+        # the absolute end of FETCHED data for the longest forward-return
+        # horizon to resolve — if the window's own end is close to the last
+        # fetched date, some snapshots near the window's end may not get a
+        # full 12m forward return and will show up as fewer non-NaN rows in
+        # the aggregated results, which is expected and not a bug.
+        usable_dates = all_dates[all_dates <= window_end]
+        usable_dates = usable_dates[: -end_buffer_days] if len(usable_dates) > end_buffer_days else usable_dates
+        snapshot_dates = pd.date_range(
+            start=config.BACKTEST_DATE_RANGE_START, end=config.BACKTEST_DATE_RANGE_END, freq=config.BACKTEST_SNAPSHOT_FREQ,
+        )
+        snapshot_dates = [d for d in snapshot_dates if d in all_dates] or \
+            [all_dates[all_dates.searchsorted(d)] for d in snapshot_dates if all_dates.searchsorted(d) < len(all_dates)]
+        # Drop any snapshot dates that fall in the warmup buffer (shouldn't
+        # happen given date_range's own start=, but defensive) or past the
+        # forward-return-safe cutoff computed above.
+        snapshot_dates = [d for d in snapshot_dates if d >= pd.Timestamp(config.BACKTEST_DATE_RANGE_START) and (len(usable_dates) == 0 or d <= usable_dates[-1])]
+    else:
+        # Fetch with extended history for backtest purposes
+        original_period = config.PRICE_HISTORY_PERIOD
+        config.PRICE_HISTORY_PERIOD = f"{config.BACKTEST_LOOKBACK_YEARS + 2}y"  # +2y buffer for indicator warmup
+        price_data = data_fetch.fetch_price_history(tickers)
+        index_df = data_fetch.fetch_index_history(index_ticker)
+        config.PRICE_HISTORY_PERIOD = original_period
+        index_close = index_df["Close"]
+
+        # Monthly snapshot dates over the configured lookback, leaving enough
+        # room at the end for the longest forward-return horizon to resolve
+        all_dates = index_close.index
+        end_buffer_days = max(config.BACKTEST_HORIZONS_DAYS.values())
+        usable_dates = all_dates[: -end_buffer_days] if len(all_dates) > end_buffer_days else all_dates
+        start_date = usable_dates[-1] - pd.DateOffset(years=config.BACKTEST_LOOKBACK_YEARS)
+        snapshot_dates = pd.date_range(start=start_date, end=usable_dates[-1], freq=config.BACKTEST_SNAPSHOT_FREQ)
+        snapshot_dates = [d for d in snapshot_dates if d in all_dates] or \
+            [all_dates[all_dates.searchsorted(d)] for d in snapshot_dates if all_dates.searchsorted(d) < len(all_dates)]
+
+    if not snapshot_dates:
+        logger.error(
+            "No usable snapshot dates — in date-range mode this usually means the "
+            "window is too close to BACKTEST_DATE_RANGE_END for any forward-return "
+            "horizon to resolve, or too close to the fetch start for indicator warmup. "
+            "Widen the window or increase BACKTEST_DATE_RANGE_WARMUP_YEARS."
+        )
+        return
     logger.info("Running %d snapshot dates from %s to %s", len(snapshot_dates), snapshot_dates[0].date(), snapshot_dates[-1].date())
 
     long_df, bench_df = run_backtest(
@@ -463,7 +516,16 @@ def main():
 
     logger.info("Backtest complete. Signal summary:\n%s", summary_df.to_string())
 
-    out_path = "backtest_results.csv" if universe_label != "NSE_SmallMicro" else "backtest_results_smallmicro.csv"
+    if config.BACKTEST_DATE_RANGE_MODE:
+        # Date-stamped, distinct from the normal-mode filenames/tab — running
+        # a date-range backtest should never silently overwrite a normal
+        # "last N years" run, or a different date-range run on a different window.
+        range_tag = f"{config.BACKTEST_DATE_RANGE_START}_to_{config.BACKTEST_DATE_RANGE_END}"
+        out_path = f"backtest_results_{universe_label}_{range_tag}.csv"
+        results_tab_name = f"{results_tab_name}_{range_tag}"
+    else:
+        out_path = "backtest_results.csv" if universe_label != "NSE_SmallMicro" else "backtest_results_smallmicro.csv"
+
     summary_df.to_csv(out_path, index=False)
     logger.info("Saved summary to %s", out_path)
 

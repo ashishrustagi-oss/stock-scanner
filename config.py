@@ -325,6 +325,39 @@ BACKTEST_UNIVERSE = "NSE500"          # "NSE500", "SP500", or "NSE_SmallMicro" �
 # range, still well within a manual GitHub Actions run.
 BACKTEST_MAX_TICKERS = None           # None = full universe; widened from 300 for a genuinely different 2nd run, not just a re-run
 BACKTEST_LOOKBACK_YEARS = 5           # how far back snapshot dates go; widened from 3 to also cover more market regimes, not just more names
+
+# ----------------------------------------------------------------------------
+# Date-range backtest mode — test a SPECIFIC historical window (e.g. a bear
+# market) instead of "the last N years from today." Built 29-06-2026: every
+# backtest run so far has been mostly bull-market-heavy, since
+# BACKTEST_LOOKBACK_YEARS always counts back from TODAY — there was no way
+# to target a fixed historical period like the COVID crash once enough time
+# passed that it fell outside any reasonable "years back from today" window.
+#
+# When BACKTEST_DATE_RANGE_MODE is True, main() ignores BACKTEST_LOOKBACK_YEARS
+# entirely and uses BACKTEST_DATE_RANGE_START/END instead — snapshot dates
+# are generated within that fixed window, and price data is fetched via
+# data_fetch.fetch_price_history_range()/fetch_index_history_range() (start=/
+# end= based, NOT the relative period= used everywhere else) with an extra
+# buffer BEFORE the start date for indicator warmup, same spirit as the
+# existing "+2y buffer" already used in lookback-years mode.
+#
+# Two ready-made windows below (commented out, pick one and uncomment, or
+# write your own) — chosen specifically for yfinance data-coverage
+# practicality, not just historical significance: the 2008 GFC and 2000-02
+# dot-com crash were considered and rejected as first targets, since most
+# NSE500 constituents' yfinance history doesn't reliably reach that far back
+# (the SAME survivorship-style data-depth issue already documented for the
+# NSE_SmallMicro backtest elsewhere in this file applies here too, just on
+# the TIME axis instead of the universe-membership axis).
+BACKTEST_DATE_RANGE_MODE = True      # False = normal "N years back from today" mode (existing behavior, unchanged)
+BACKTEST_DATE_RANGE_START = "2020-01-01"   # COVID crash window: captures the Jan 2020 peak, the Feb-Apr crash, and into the recovery
+BACKTEST_DATE_RANGE_END = "2021-01-31"
+# Alternative — 2015-16 correction (milder, slower bear phase, different
+# character from COVID's sharp shock): BACKTEST_DATE_RANGE_START =
+# "2015-03-01", BACKTEST_DATE_RANGE_END = "2017-03-31"
+BACKTEST_DATE_RANGE_WARMUP_YEARS = 1.5  # extra history fetched BEFORE start date, for indicator warmup (200d OBV slope, 252-bar 52w-range, etc. all need real history before the first snapshot date, not just the window itself)
+
 BACKTEST_SNAPSHOT_FREQ = "MS"         # "MS" = monthly (1st of month); "W" = weekly (much slower)
 BACKTEST_MIN_HISTORY_DAYS = 300       # minimum days of price history needed before a date is usable
 BACKTEST_HORIZONS_DAYS = {

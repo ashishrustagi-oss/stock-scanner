@@ -1023,6 +1023,65 @@ Widen `BACKTEST_MAX_TICKERS` / `BACKTEST_LOOKBACK_YEARS` / switch
 finishes in a reasonable time — each added ticker and each added snapshot
 multiplies the runtime.
 
+### Testing a specific historical window — bear markets, not just "last N years" (29-06-2026)
+
+Every backtest run before this point used `BACKTEST_LOOKBACK_YEARS`, which
+always counts back from TODAY — structurally unable to reach a fixed
+historical window once enough time passes (the COVID crash, Feb-Apr 2020,
+fell outside even the widened 5-year lookback by mid-2025). Since every
+signal in this system has so far been validated almost entirely on a
+bull-market-heavy sample, this was a real gap — `trend_death` being stuck
+at n=2 for the longest time was a direct symptom of it.
+
+Set `config.BACKTEST_DATE_RANGE_MODE = True` to switch to a fixed
+`[BACKTEST_DATE_RANGE_START, BACKTEST_DATE_RANGE_END]` window instead —
+`BACKTEST_LOOKBACK_YEARS` is ignored entirely in this mode. Two windows
+are pre-written in `config.py` (uncomment/edit as needed):
+- **COVID crash** (default): `2020-01-01` to `2021-01-31` — captures the
+  January 2020 peak, the sharp Feb-Apr crash (-38% per published Nifty
+  drawdown data), and into the recovery. Chosen over the 2008 GFC or
+  2000-02 dot-com crash specifically for yfinance data-coverage
+  practicality — most NSE500 constituents' history doesn't reliably reach
+  back to 2008, the same kind of data-depth limitation already documented
+  for the NSE_SmallMicro backtest's survivorship caveat, just on the time
+  axis instead of the universe-membership axis.
+- **2015-16 correction** (commented out): `2015-03-01` to `2017-03-31` —
+  milder (~25% drawdown per published data), slower, a genuinely different
+  bear-market character than COVID's sharp shock.
+
+Mechanically: a new `BACKTEST_DATE_RANGE_WARMUP_YEARS` (default 1.5) worth
+of EXTRA history is fetched before the window's own start date, so
+indicators with long lookbacks (the 200-day OBV slope, the 252-bar 52-week
+range used by `obv_52w_range_pct`/`range_position_divergence`, etc.) have
+real data to compute from at the very first snapshot date — without this,
+the first several snapshots in any date-range run would silently produce
+garbage or NaN-heavy results. Uses two NEW functions in `data_fetch.py`
+(`fetch_price_history_range`/`fetch_index_history_range`, using yfinance's
+`start=`/`end=` parameters) rather than modifying the existing `period=`-
+based functions — the daily scan and normal-mode backtest runs are
+completely unaffected by this addition; verified directly by re-running
+the existing smoketests after building this, all passing unchanged.
+
+Verified the mechanism itself with synthetic data shaped like a real
+crash-and-recover curve before trusting it: the benchmark's own forward
+returns came back strongly negative (-49.71% at 1m, -74.38% at 3m in the
+synthetic test) — confirming the window genuinely captures a falling
+market rather than silently defaulting to normal behavior.
+
+Output is clearly separated from normal-mode runs — CSV filename includes
+the universe and date range (e.g.
+`backtest_results_NSE500_2020-01-01_to_2021-01-31.csv`), and the Sheets
+tab name gets the same suffix — a date-range run can never silently
+overwrite a normal "last N years" run, or a different date-range run on a
+different window.
+
+**Not yet run against real data** — this entire feature was built and
+verified with synthetic data only (same yfinance-blocked-from-sandbox
+constraint as every other diagnostic in this project). The first real run
+against actual NSE history is the genuine test of both the mechanism and,
+more importantly, of every signal's performance outside the bull-market
+conditions every prior backtest result in this README was measured under.
+
 ### What I tested vs. what only a real run can tell you
 
 I validated the **mechanics** thoroughly with synthetic data: forward-return
