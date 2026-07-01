@@ -1,4 +1,5 @@
 name: Dhan Token Refresh
+# Refreshes Dhan access token daily at 8:45 AM IST
 
 on:
   workflow_dispatch:
