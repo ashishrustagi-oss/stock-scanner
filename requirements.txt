@@ -7,3 +7,5 @@ requests>=2.31
 pdfplumber>=0.11
 lxml>=5.0
 nse>=3.1.0
+pyotp>=2.9.0
+mStock-TradingApi-A>=0.1.9

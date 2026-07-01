@@ -1,0 +1,564 @@
+"""
+Live trading module — Ashish Capital Scanner.
+
+Reads today's qualified stock list from the scanner output, checks
+Supertrend conditions for each stock, and places/manages orders via the
+M-stock API. Sends Telegram alerts for every signal and order event.
+
+Architecture:
+  Layer 1 — Scanner qualification (from today's sheet/CSV output)
+    - Elite Compounder: EliteCompounderScore >= 65
+    - OBV+RS Combo: obv_leadership_rank > 90 AND rs_rank > 90
+    (NSE500 only)
+
+  Layer 2 — Trend filter (checked at start of each cycle)
+    - Weekly ST(10,3) bullish
+    - Daily  ST(10,3) bullish
+
+  Layer 3 — Entry trigger
+    - Daily ST(2,1) bullish crossover (price crosses above from below)
+    - Only fires if Layer 2 conditions are met
+
+  Exit triggers
+    - Daily ST(10,3) bearish crossover (primary trailing exit)
+    - Hard stop: price <= entry_price * 0.90
+
+Capital:
+  - Elite portfolio:  Rs 50,000, max 5 positions, ~Rs 10,000 each
+  - OBV/RS portfolio: Rs 50,000, max 5 positions, ~Rs 10,000 each
+  - Max Rs 20,000 per stock across both portfolios combined
+
+Order type: CNC (delivery/positional)
+Re-entry:   Allowed after any exit if fresh ST(2,1) crossover occurs
+
+Run schedule: every 15 minutes, 9:15-10:15 UTC (= 14:45-15:45 IST),
+              Mon-Fri, via .github/workflows/trade_scan.yml
+"""
+
+import datetime
+import json
+import logging
+import math
+import os
+import time
+
+import pandas as pd
+import pyotp
+import requests
+import yfinance as yf
+from tradingapi_a.mconnect import MConnect
+
+import config
+from supertrend import get_supertrend_state
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+ELITE_BUDGET       = 50_000   # INR ring-fenced for Elite Compounder strategy
+COMBO_BUDGET       = 50_000   # INR ring-fenced for OBV+RS Combo strategy
+MAX_POSITION_VALUE = 20_000   # hard cap per stock across both portfolios
+TARGET_POSITION    = 10_000   # target allocation per new position
+MAX_POSITIONS      = 5        # max open positions per strategy
+STOP_LOSS_PCT      = 0.10     # 10% below entry price
+
+# Supertrend parameters
+ST_SLOW_PERIOD = 10; ST_SLOW_MULT = 3.0   # trend filter + exit trigger
+ST_FAST_PERIOD = 2;  ST_FAST_MULT = 1.0   # entry trigger
+
+# ---------------------------------------------------------------------------
+# M-stock authentication — fully automated via pyotp
+# ---------------------------------------------------------------------------
+
+def get_mstock_client() -> MConnect | None:
+    """
+    Authenticates with M-stock and returns a ready-to-use MConnect client.
+
+    Flow (fully automated, no manual step needed):
+      1. login(user_id, password)  — establishes session cookie
+      2. verify_totp(api_key, totp) — pyotp generates the current 6-digit
+                                       code from MSTOCK_TOTP_SECRET;
+                                       internally calls set_access_token()
+      After step 2, the MConnect object is fully primed for all API calls.
+
+    All credentials come from environment variables / GitHub secrets:
+      MSTOCK_USER_ID      — M-stock client ID / login username
+      MSTOCK_PASSWORD     — M-stock login password
+      MSTOCK_API_KEY      — API key from trade.mstock.com developer portal
+      MSTOCK_TOTP_SECRET  — raw TOTP secret saved when registering the
+                            authenticator app (the text string, not the
+                            6-digit code — pyotp generates that from it)
+    """
+    user_id     = os.environ.get("MSTOCK_USER_ID", "")
+    password    = os.environ.get("MSTOCK_PASSWORD", "")
+    api_key     = os.environ.get("MSTOCK_API_KEY", "")
+    totp_secret = os.environ.get("MSTOCK_TOTP_SECRET", "")
+
+    if not all([user_id, password, api_key, totp_secret]):
+        missing = [k for k, v in {
+            "MSTOCK_USER_ID": user_id, "MSTOCK_PASSWORD": password,
+            "MSTOCK_API_KEY": api_key, "MSTOCK_TOTP_SECRET": totp_secret,
+        }.items() if not v]
+        logger.error("trade: missing secrets: %s", missing)
+        _send_trade_alert(
+            "⚠️ *Trade cycle skipped*\n"
+            f"Missing GitHub secrets: `{'`, `'.join(missing)}`\n"
+            "Add them at Settings → Secrets → Actions."
+        )
+        return None
+
+    try:
+        client = MConnect()
+
+        # Step 1: login with username + password
+        login_resp = client.login(user_id, password)
+        logger.info("trade: login response status: %s",
+                    login_resp.json().get("status") if hasattr(login_resp, "json") else login_resp)
+
+        # Step 2: generate current TOTP from secret and verify
+        # pyotp.TOTP generates the same 6-digit code your Google Authenticator
+        # shows right now — valid for 30 seconds, same algorithm.
+        totp_code = pyotp.TOTP(totp_secret).now()
+        logger.info("trade: verifying TOTP (code generated by pyotp)")
+        totp_resp = client.verify_totp(api_key, totp_code)
+
+        # verify_totp() calls set_access_token() internally on success
+        if client.access_token:
+            logger.info("trade: M-stock auth successful, access_token obtained")
+            return client
+        else:
+            resp_json = totp_resp.json() if hasattr(totp_resp, "json") else {}
+            logger.error("trade: M-stock auth failed — no access_token. Response: %s", resp_json)
+            _send_trade_alert(
+                "⚠️ *M-stock auth failed*\n"
+                f"TOTP verification returned no access_token.\n"
+                f"Response: `{str(resp_json)[:200]}`"
+            )
+            return None
+
+    except Exception as exc:
+        logger.error("trade: M-stock auth exception: %s", exc)
+        _send_trade_alert(f"⚠️ *M-stock auth exception*\n`{str(exc)[:300]}`")
+        return None
+
+
+# ---------------------------------------------------------------------------
+# M-stock API helpers (using SDK)
+# ---------------------------------------------------------------------------
+
+def get_holdings(client: MConnect) -> dict[str, dict]:
+    """
+    Returns current CNC holdings as {ticker: {qty, avg_price, ltp}}.
+    Ticker is bare NSE symbol (no .NS suffix).
+    """
+    try:
+        resp = client.get_holdings()
+        data = resp.json() if hasattr(resp, "json") else resp
+        items = data.get("data") or []
+        holdings = {}
+        for item in items:
+            symbol = (
+                item.get("tradingsymbol") or
+                item.get("symbol") or ""
+            ).upper().strip()
+            if not symbol:
+                continue
+            holdings[symbol] = {
+                "qty":       int(item.get("quantity", 0)),
+                "avg_price": float(item.get("averageprice", 0)),
+                "ltp":       float(item.get("ltp", 0)),
+            }
+        return holdings
+    except Exception as exc:
+        logger.error("trade: get_holdings failed: %s", exc)
+        return {}
+
+
+def get_ltp(symbol: str, client: MConnect) -> float | None:
+    """Returns last traded price for a single NSE symbol."""
+    try:
+        resp = client.get_ltp([f"NSE:{symbol}-EQ"])
+        data = resp.json() if hasattr(resp, "json") else resp
+        quotes = data.get("data") or {}
+        # Try both key formats M-stock might return
+        for key in [f"NSE:{symbol}-EQ", f"NSE:{symbol}", symbol]:
+            if key in quotes:
+                return float(quotes[key].get("last_price", 0)) or None
+        return None
+    except Exception as exc:
+        logger.debug("trade: get_ltp(%s) failed: %s", symbol, exc)
+        return None
+
+
+def place_order(symbol: str, qty: int, transaction_type: str,
+                client: MConnect) -> dict:
+    """
+    Places a CNC market order via the M-stock SDK.
+    transaction_type: "BUY" or "SELL"
+    """
+    logger.info("trade: placing %s %s x%d CNC MARKET", transaction_type, symbol, qty)
+    resp = client.place_order(
+        _variety="regular",
+        _tradingsymbol=symbol,
+        _exchange="NSE",
+        _transaction_type=transaction_type,
+        _order_type="MARKET",
+        _quantity=str(qty),
+        _product="CNC",
+        _validity="DAY",
+        _price="0",
+        _trigger_price="0",
+        _disclosed_quantity="0",
+        _tag="AshishScanner",
+    )
+    result = resp.json() if hasattr(resp, "json") else resp
+    logger.info("trade: order response: %s", result)
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Trade state persistence
+# ---------------------------------------------------------------------------
+
+def _load_state() -> dict:
+    path = config.TRADE_STATE_PATH
+    if os.path.exists(path):
+        with open(path) as f:
+            return json.load(f)
+    return {"elite": {}, "combo": {}}
+
+
+def _save_state(state: dict) -> None:
+    os.makedirs("cache", exist_ok=True)
+    with open(config.TRADE_STATE_PATH, "w") as f:
+        json.dump(state, f, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# Qualified stock list (from scanner output)
+# ---------------------------------------------------------------------------
+
+def get_qualified_stocks() -> dict[str, list[str]]:
+    """
+    Reads today's NSE500 scan CSV and returns two lists:
+      {"elite": [...], "combo": [...]}
+    of bare NSE symbols (no .NS suffix), sorted by score descending.
+    """
+    csv_path = config.TRADE_QUALIFIED_CSV_PATH
+    if not os.path.exists(csv_path):
+        logger.warning("trade: qualified CSV not found at %s — scan not yet run today?", csv_path)
+        return {"elite": [], "combo": []}
+
+    try:
+        df = pd.read_csv(csv_path)
+        df["ticker"] = df["ticker"].str.replace(r"\.NS$", "", regex=True).str.upper()
+
+        # Elite: sorted by score descending so top 5 are the strongest
+        elite_df = df[df["EliteCompounderScore"] >= 65].sort_values(
+            "EliteCompounderScore", ascending=False
+        )
+        elite = elite_df["ticker"].tolist()
+
+        # Combo: sorted by composite rank (obv + rs average) descending
+        combo_mask = (
+            df["obv_leadership_rank"].notna() & (df["obv_leadership_rank"] > 90) &
+            df["rs_rank"].notna()             & (df["rs_rank"] > 90)
+        )
+        combo_df = df[combo_mask].copy()
+        combo_df["combo_rank"] = (
+            combo_df["obv_leadership_rank"] + combo_df["rs_rank"]
+        ) / 2
+        combo = combo_df.sort_values("combo_rank", ascending=False)["ticker"].tolist()
+
+        logger.info("trade: qualified — elite: %d, combo: %d", len(elite), len(combo))
+        return {"elite": elite, "combo": combo}
+    except Exception as exc:
+        logger.error("trade: failed to read qualified CSV: %s", exc)
+        return {"elite": [], "combo": []}
+
+
+# ---------------------------------------------------------------------------
+# Price data + Supertrend checks
+# ---------------------------------------------------------------------------
+
+def _fetch_ohlcv(symbol: str, interval: str, period: str) -> pd.DataFrame | None:
+    try:
+        ticker = yf.Ticker(f"{symbol}.NS")
+        df = ticker.history(interval=interval, period=period)
+        if df.empty:
+            return None
+        df.columns = [c.lower() for c in df.columns]
+        return df
+    except Exception as exc:
+        logger.debug("trade: _fetch_ohlcv(%s, %s) failed: %s", symbol, interval, exc)
+        return None
+
+
+def check_supertrend_conditions(symbol: str) -> dict:
+    """
+    Returns all three Supertrend states for a symbol.
+    """
+    result = {
+        "weekly_10_3_bullish":   None,
+        "daily_10_3_bullish":    None,
+        "daily_10_3_cross_down": False,
+        "daily_2_1_cross_up":    False,
+        "eligible_for_entry":    False,
+        "error":                 None,
+    }
+
+    weekly_df = _fetch_ohlcv(symbol, "1wk", "2y")
+    if weekly_df is None or len(weekly_df) < 15:
+        result["error"] = "insufficient weekly data"
+        return result
+
+    weekly_st = get_supertrend_state(weekly_df, ST_SLOW_PERIOD, ST_SLOW_MULT)
+    result["weekly_10_3_bullish"] = weekly_st["bullish"]
+
+    daily_df = _fetch_ohlcv(symbol, "1d", "1y")
+    if daily_df is None or len(daily_df) < 15:
+        result["error"] = "insufficient daily data"
+        return result
+
+    daily_slow = get_supertrend_state(daily_df, ST_SLOW_PERIOD, ST_SLOW_MULT, prefix="d10_")
+    daily_fast = get_supertrend_state(daily_df, ST_FAST_PERIOD, ST_FAST_MULT, prefix="d2_")
+
+    result["daily_10_3_bullish"]    = daily_slow["bullish"]
+    result["daily_10_3_cross_down"] = daily_slow["cross_down"]
+    result["daily_2_1_cross_up"]    = daily_fast["cross_up"]
+    result["eligible_for_entry"]    = bool(
+        result["weekly_10_3_bullish"] and result["daily_10_3_bullish"]
+    )
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Position sizing
+# ---------------------------------------------------------------------------
+
+def compute_qty(price: float, budget: float = TARGET_POSITION) -> int:
+    """Whole shares targeting ~Rs 10,000. Returns at least 1."""
+    if price <= 0:
+        return 0
+    qty = max(1, math.floor(budget / price))
+    if qty * price > MAX_POSITION_VALUE:
+        logger.warning(
+            "trade: 1 share of this stock (Rs %.0f) exceeds MAX_POSITION_VALUE Rs %.0f",
+            price, MAX_POSITION_VALUE,
+        )
+    return qty
+
+
+# ---------------------------------------------------------------------------
+# Telegram alerts
+# ---------------------------------------------------------------------------
+
+def _send_trade_alert(message: str) -> None:
+    token   = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
+    if not token or not chat_id:
+        return
+    try:
+        requests.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            json={"chat_id": chat_id, "text": message, "parse_mode": "Markdown"},
+            timeout=10,
+        )
+    except Exception as exc:
+        logger.debug("trade: Telegram alert failed: %s", exc)
+
+
+def _entry_alert(symbol: str, strategy: str, qty: int, price: float,
+                 st_state: dict) -> None:
+    w = "✅" if st_state.get("weekly_10_3_bullish") else "❌"
+    d = "✅" if st_state.get("daily_10_3_bullish")  else "❌"
+    _send_trade_alert(
+        f"🟢 *ENTRY — {symbol}*\n"
+        f"Strategy : {strategy}\n"
+        f"Signal   : ST(2,1) bullish crossover\n"
+        f"Price    : ₹{price:,.2f}\n"
+        f"Qty      : {qty} shares (~₹{qty*price:,.0f})\n"
+        f"Filters  : {w} Weekly ST(10,3) | {d} Daily ST(10,3)\n"
+        f"Order    : *BUY {qty} {symbol} CNC MARKET — placed*"
+    )
+
+
+def _exit_alert(symbol: str, strategy: str, qty: int, entry_price: float,
+                exit_price: float, reason: str) -> None:
+    pnl     = (exit_price - entry_price) * qty
+    pnl_pct = (exit_price - entry_price) / entry_price * 100
+    emoji   = "🟩" if pnl >= 0 else "🟥"
+    _send_trade_alert(
+        f"🔴 *EXIT — {symbol}*\n"
+        f"Strategy : {strategy}\n"
+        f"Reason   : {reason}\n"
+        f"Entry    : ₹{entry_price:,.2f} → Exit: ₹{exit_price:,.2f}\n"
+        f"P&L      : {emoji} ₹{pnl:+,.0f} ({pnl_pct:+.1f}%) on {qty} shares\n"
+        f"Order    : *SELL {qty} {symbol} CNC MARKET — placed*"
+    )
+
+
+def _session_summary(state: dict) -> None:
+    elite_count = len(state.get("elite", {}))
+    combo_count = len(state.get("combo", {}))
+    now_ist = datetime.datetime.utcnow() + datetime.timedelta(hours=5, minutes=30)
+    _send_trade_alert(
+        f"📊 *Trade cycle complete — {now_ist.strftime('%H:%M IST')}*\n"
+        f"Elite portfolio : {elite_count}/{MAX_POSITIONS} positions open\n"
+        f"OBV/RS portfolio: {combo_count}/{MAX_POSITIONS} positions open"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Main entry point
+# ---------------------------------------------------------------------------
+
+def run_trade_cycle() -> None:
+    """
+    Called every 15 minutes by the GitHub Actions trade workflow.
+    Full cycle: auth → holdings → check signals → place orders → save state.
+    """
+    now_utc = datetime.datetime.utcnow()
+    logger.info("trade: === starting trade cycle %s UTC ===",
+                now_utc.strftime("%Y-%m-%d %H:%M"))
+
+    # Authenticate
+    client = get_mstock_client()
+    if client is None:
+        return
+
+    # Load persisted state and live holdings
+    state    = _load_state()
+    holdings = get_holdings(client)
+    qualified = get_qualified_stocks()
+
+    strategy_map = {
+        "elite": {"stocks": qualified.get("elite", []), "label": "Elite Compounder"},
+        "combo": {"stocks": qualified.get("combo", []), "label": "OBV/RS Combo"},
+    }
+
+    for strat_key, strat in strategy_map.items():
+        open_positions = state.setdefault(strat_key, {})
+        qualified_set  = set(strat["stocks"])
+
+        # --- Check exits for open positions ---
+        for symbol, pos in list(open_positions.items()):
+            entry_price = pos["entry_price"]
+            qty         = pos["qty"]
+
+            ltp = get_ltp(symbol, client)
+            if ltp is None:
+                ltp = holdings.get(symbol, {}).get("ltp")   # fallback to holdings data
+            if ltp is None:
+                logger.warning("trade: could not get LTP for %s — skipping exit check", symbol)
+                continue
+
+            # Hard stop-loss
+            if ltp <= entry_price * (1 - STOP_LOSS_PCT):
+                logger.info("trade: STOP LOSS %s entry=%.2f ltp=%.2f", symbol, entry_price, ltp)
+                try:
+                    place_order(symbol, qty, "SELL", client)
+                except Exception as exc:
+                    logger.error("trade: SELL failed %s: %s", symbol, exc)
+                _exit_alert(symbol, strat["label"], qty, entry_price, ltp,
+                            f"Hard stop-loss ({STOP_LOSS_PCT*100:.0f}% below entry)")
+                del open_positions[symbol]
+                continue
+
+            # ST(10,3) bearish crossover exit
+            st = check_supertrend_conditions(symbol)
+            if st.get("daily_10_3_cross_down"):
+                logger.info("trade: ST(10,3) EXIT %s", symbol)
+                try:
+                    place_order(symbol, qty, "SELL", client)
+                except Exception as exc:
+                    logger.error("trade: SELL failed %s: %s", symbol, exc)
+                _exit_alert(symbol, strat["label"], qty, entry_price, ltp,
+                            "Daily ST(10,3) bearish crossover")
+                del open_positions[symbol]
+                continue
+
+            # Dropped off scanner qualified list
+            if symbol not in qualified_set:
+                logger.info("trade: %s dropped off qualified list — exiting", symbol)
+                try:
+                    place_order(symbol, qty, "SELL", client)
+                except Exception as exc:
+                    logger.error("trade: SELL failed %s: %s", symbol, exc)
+                _exit_alert(symbol, strat["label"], qty, entry_price, ltp,
+                            "Dropped off scanner qualified list")
+                del open_positions[symbol]
+
+        # --- Check entries ---
+        if len(open_positions) >= MAX_POSITIONS:
+            logger.info("trade: %s portfolio full (%d/%d)",
+                        strat_key, len(open_positions), MAX_POSITIONS)
+            state[strat_key] = open_positions
+            continue
+
+        candidates = [s for s in strat["stocks"] if s not in open_positions]
+
+        for symbol in candidates:
+            if len(open_positions) >= MAX_POSITIONS:
+                break
+
+            # Cross-portfolio Rs 20k cap
+            other_strat = "combo" if strat_key == "elite" else "elite"
+            if symbol in state.get(other_strat, {}):
+                logger.debug("trade: %s already in %s portfolio — skipping", symbol, other_strat)
+                continue
+
+            ltp = get_ltp(symbol, client)
+            if ltp is None:
+                continue
+
+            st = check_supertrend_conditions(symbol)
+            if st.get("error"):
+                logger.debug("trade: %s ST error: %s", symbol, st["error"])
+                continue
+
+            if not st.get("eligible_for_entry"):
+                logger.debug("trade: %s not eligible (weekly=%s daily=%s)",
+                             symbol, st["weekly_10_3_bullish"], st["daily_10_3_bullish"])
+                continue
+
+            if not st.get("daily_2_1_cross_up"):
+                logger.debug("trade: %s no ST(2,1) crossover", symbol)
+                continue
+
+            # All conditions met — place entry order
+            qty = compute_qty(ltp)
+            if qty == 0:
+                continue
+
+            logger.info("trade: ENTRY %s qty=%d @ Rs %.2f", symbol, qty, ltp)
+            try:
+                place_order(symbol, qty, "BUY", client)
+                open_positions[symbol] = {
+                    "qty":         qty,
+                    "entry_price": ltp,
+                    "entry_date":  datetime.date.today().isoformat(),
+                    "strategy":    strat_key,
+                }
+                _entry_alert(symbol, strat["label"], qty, ltp, st)
+            except Exception as exc:
+                logger.error("trade: BUY failed %s: %s", symbol, exc)
+
+            time.sleep(0.5)
+
+        state[strat_key] = open_positions
+
+    _save_state(state)
+    _session_summary(state)
+    logger.info("trade: cycle done — elite: %d, combo: %d",
+                len(state.get("elite", {})), len(state.get("combo", {})))
+
+
+if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
+    run_trade_cycle()
