@@ -681,3 +681,11 @@ NOTIFY_CONFIRMED_BAND_PCT = 25.0    # Bucket B: 15-25% off 52w high
                                      # Bucket C: >25% off 52w high
 
 NOTIFY_MAX_TICKERS_PER_SECTION = 15   # keeps message reasonably sized for both channels
+
+# ----------------------------------------------------------------------------
+# TRADE MODULE (trade.py + trade_scan.yml)
+# ----------------------------------------------------------------------------
+# Path to most recent NSE500 scan output CSV — trade.py reads this to build
+# the qualified stock list. main.py writes here after each NSE500 scan.
+TRADE_QUALIFIED_CSV_PATH = "cache/nse500_latest.csv"
+TRADE_STATE_PATH = "cache/trade_state.json"

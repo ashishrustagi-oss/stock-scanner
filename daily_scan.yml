@@ -1,0 +1,55 @@
+name: Daily Stock Scan
+
+on:
+  schedule:
+    # 23:30 UTC = after both NSE close (10:00 UTC) and US market close
+    # (20:00-21:00 UTC depending on DST). Adjust as you like — GitHub Actions
+    # cron can run a few minutes late during periods of high platform load.
+    - cron: "30 23 * * 1-5"   # Mon-Fri only
+  workflow_dispatch: {}        # lets you trigger a run manually from the Actions tab
+
+permissions:
+  contents: write   # needed to commit the updated fundamentals cache back to the repo
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Write Google service account credentials
+        run: echo "${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON_B64 }}" | base64 --decode > service_account.json
+
+      - name: Run scan
+        env:
+          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
+          GOOGLE_SERVICE_ACCOUNT_JSON_PATH: service_account.json
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+        run: python main.py
+
+      - name: Remove credentials file
+        if: always()
+        run: rm -f service_account.json
+
+      - name: Persist caches (fundamentals + shareholding)
+        if: always()
+        run: |
+          git config user.name "scanner-bot"
+          git config user.email "actions@github.com"
+          git add cache/fundamentals_cache.json cache/shareholding_history.json cache/nse500_latest.csv 2>/dev/null || true
+          git diff --quiet --cached || git commit -m "Update fundamentals + shareholding cache [skip ci]"
+          git push || true

@@ -491,6 +491,18 @@ def main():
     sheets_export.export_to_sheets(tabs)
     logger.info("Scan complete and exported to Google Sheets.")
 
+    # Write NSE500 output to a fixed-path CSV so trade.py can read today's
+    # qualified list without needing Google Sheets access during intraday runs.
+    if not nse_df.empty:
+        try:
+            import os as _os
+            _os.makedirs("cache", exist_ok=True)
+            nse_df.to_csv(config.TRADE_QUALIFIED_CSV_PATH, index=False)
+            logger.info("trade: NSE500 qualified list written to %s (%d rows)",
+                        config.TRADE_QUALIFIED_CSV_PATH, len(nse_df))
+        except Exception as _exc:
+            logger.warning("trade: failed to write qualified CSV: %s", _exc)
+
     # ── Daily notification (Telegram + Email) — non-fatal; never blocks/fails
     # the scan. Reads the same nse_df/us_df/smallmicro_df already computed
     # above, so the notification reflects exactly this run's fresh data. See
