@@ -1,0 +1,39 @@
+name: Dhan Token Refresh
+
+on:
+  schedule:
+    # 8:45 AM IST = 3:15 AM UTC, Mon-Fri
+    - cron: "15 3 * * 1-5"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install dhanhq pyotp PyGithub requests
+
+      - name: Refresh Dhan access token
+        env:
+          DHAN_CLIENT_ID:   ${{ secrets.DHAN_CLIENT_ID }}
+          DHAN_API_KEY:     ${{ secrets.DHAN_API_KEY }}
+          DHAN_API_SECRET:  ${{ secrets.DHAN_API_SECRET }}
+          DHAN_PIN:         ${{ secrets.DHAN_PIN }}
+          DHAN_TOTP_SECRET: ${{ secrets.DHAN_TOTP_SECRET }}
+          GH_TOKEN_PAT:     ${{ secrets.GH_TOKEN_PAT }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: python dhan_token_refresh.py

@@ -9,3 +9,5 @@ lxml>=5.0
 nse>=3.1.0
 pyotp>=2.9.0
 mStock-TradingApi-A>=0.1.9
+dhanhq>=2.1.0
+PyGithub>=2.0.0

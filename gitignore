@@ -1,0 +1,7 @@
+service_account.json
+__pycache__/
+*.pyc
+.venv/
+.env.local
+logs/
+mconnect.log

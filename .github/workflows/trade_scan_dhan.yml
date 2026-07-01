@@ -1,0 +1,81 @@
+name: Trade Scan Dhan (Intraday)
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    # Every 15 minutes Mon-Fri, 9:15 AM to 3:45 PM IST (03:45-10:15 UTC)
+    - cron: "45 3 * * 1-5"
+    - cron: "0 4 * * 1-5"
+    - cron: "15 4 * * 1-5"
+    - cron: "30 4 * * 1-5"
+    - cron: "45 4 * * 1-5"
+    - cron: "0 5 * * 1-5"
+    - cron: "15 5 * * 1-5"
+    - cron: "30 5 * * 1-5"
+    - cron: "45 5 * * 1-5"
+    - cron: "0 6 * * 1-5"
+    - cron: "15 6 * * 1-5"
+    - cron: "30 6 * * 1-5"
+    - cron: "45 6 * * 1-5"
+    - cron: "0 7 * * 1-5"
+    - cron: "15 7 * * 1-5"
+    - cron: "30 7 * * 1-5"
+    - cron: "45 7 * * 1-5"
+    - cron: "0 8 * * 1-5"
+    - cron: "15 8 * * 1-5"
+    - cron: "30 8 * * 1-5"
+    - cron: "45 8 * * 1-5"
+    - cron: "0 9 * * 1-5"
+    - cron: "15 9 * * 1-5"
+    - cron: "30 9 * * 1-5"
+    - cron: "45 9 * * 1-5"
+    - cron: "0 10 * * 1-5"
+    - cron: "15 10 * * 1-5"
+
+permissions:
+  contents: write
+
+jobs:
+  trade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Write Google service account credentials
+        run: echo "${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON_B64 }}" | base64 --decode > service_account.json
+
+      - name: Run Dhan trade cycle
+        env:
+          DHAN_CLIENT_ID:    ${{ secrets.DHAN_CLIENT_ID }}
+          DHAN_ACCESS_TOKEN: ${{ secrets.DHAN_ACCESS_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+          GOOGLE_SHEET_ID:    ${{ secrets.GOOGLE_SHEET_ID }}
+          GOOGLE_SERVICE_ACCOUNT_JSON_PATH: service_account.json
+        run: python trade_dhan.py
+
+      - name: Remove credentials file
+        if: always()
+        run: rm -f service_account.json
+
+      - name: Persist trade state
+        if: always()
+        run: |
+          git config user.name "scanner-bot"
+          git config user.email "actions@github.com"
+          git pull --rebase origin main || true
+          git add cache/trade_state.json 2>/dev/null || true
+          git diff --quiet --cached || git commit -m "Update trade state [skip ci]"
+          git push || true
