@@ -58,8 +58,9 @@ jobs:
         run: echo "${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON_B64 }}" | base64 --decode > service_account.json
 
       - name: Run watchlist (9:15 AM run only)
-        # Only send watchlist on the first run of the day (3:45 UTC = 9:15 AM IST)
-        if: github.event_name == 'schedule' && contains(github.event.schedule, '45 3')  || github.event_name == 'workflow_dispatch'
+        # Only send watchlist on the scheduled 9:15 AM IST run (3:45 UTC cron).
+        # Excluded from workflow_dispatch (manual triggers) to avoid spam.
+        if: github.event_name == 'schedule' && contains(github.event.schedule, '45 3')
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
