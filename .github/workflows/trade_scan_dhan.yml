@@ -3,7 +3,8 @@ name: Trade Scan Dhan (Intraday)
 on:
   workflow_dispatch: {}
   schedule:
-    # Every 15 minutes Mon-Fri, 9:15 AM to 3:45 PM IST (03:45-10:15 UTC)
+    # 9:15 AM IST = 3:45 UTC — first run sends watchlist + trade cycle
+    # Then every 15 min until 3:45 PM IST = 10:15 UTC
     - cron: "45 3 * * 1-5"
     - cron: "0 4 * * 1-5"
     - cron: "15 4 * * 1-5"
@@ -55,6 +56,15 @@ jobs:
 
       - name: Write Google service account credentials
         run: echo "${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON_B64 }}" | base64 --decode > service_account.json
+
+      - name: Run watchlist (9:15 AM run only)
+        # Only send watchlist on the first run of the day (3:45 UTC = 9:15 AM IST)
+        if: github.event_name == 'schedule' && contains(github.event.schedule, '45 3')  || github.event_name == 'workflow_dispatch'
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+          GOOGLE_SERVICE_ACCOUNT_JSON_PATH: service_account.json
+        run: python -c "import watchlist; import logging; logging.basicConfig(level=logging.INFO); watchlist.run_watchlist()"
 
       - name: Run Dhan trade cycle
         env:
