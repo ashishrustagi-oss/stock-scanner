@@ -689,3 +689,6 @@ NOTIFY_MAX_TICKERS_PER_SECTION = 15   # keeps message reasonably sized for both 
 # the qualified stock list. main.py writes here after each NSE500 scan.
 TRADE_QUALIFIED_CSV_PATH = "cache/nse500_latest.csv"
 TRADE_STATE_PATH = "cache/trade_state.json"
+
+# SmallMicro latest scan output for MTF strategy
+TRADE_SMALLMICRO_CSV_PATH = "cache/smallmicro_latest.csv"

@@ -30,8 +30,8 @@ import time
 
 import pandas as pd
 import requests
-import yfinance as yf
 from dhanhq import DhanContext, dhanhq
+from dhan_data import DhanData
 
 import config
 from supertrend import get_supertrend_state
@@ -253,16 +253,10 @@ def get_qualified_stocks() -> dict[str, list[str]]:
 # Supertrend checks
 # ---------------------------------------------------------------------------
 
-def _fetch_ohlcv(symbol: str, interval: str, period: str) -> pd.DataFrame | None:
-    try:
-        df = yf.Ticker(f"{symbol}.NS").history(interval=interval, period=period)
-        if df.empty:
-            return None
-        df.columns = [c.lower() for c in df.columns]
-        return df
-    except Exception as exc:
-        logger.debug("trade_dhan: _fetch_ohlcv(%s) failed: %s", symbol, exc)
-        return None
+# Data fetching now uses Dhan API via DhanData (replaces yfinance).
+# DhanData instance is created per trade cycle in run_trade_cycle()
+# and passed into check_supertrend_conditions via a module-level reference.
+_dhan_data: DhanData | None = None
 
 
 def check_supertrend_conditions(symbol: str) -> dict:
@@ -271,14 +265,18 @@ def check_supertrend_conditions(symbol: str) -> dict:
         "daily_10_3_cross_down": False, "daily_2_1_cross_up": False,
         "eligible_for_entry": False, "error": None,
     }
-    weekly_df = _fetch_ohlcv(symbol, "1wk", "2y")
+    if _dhan_data is None:
+        result["error"] = "DhanData not initialised"
+        return result
+
+    weekly_df = _dhan_data.get_weekly(symbol, weeks=104)
     if weekly_df is None or len(weekly_df) < 15:
         result["error"] = "insufficient weekly data"
         return result
     result["weekly_10_3_bullish"] = get_supertrend_state(
         weekly_df, ST_SLOW_PERIOD, ST_SLOW_MULT)["bullish"]
 
-    daily_df = _fetch_ohlcv(symbol, "1d", "1y")
+    daily_df = _dhan_data.get_daily(symbol, days=400)
     if daily_df is None or len(daily_df) < 15:
         result["error"] = "insufficient daily data"
         return result
@@ -370,9 +368,13 @@ def run_trade_cycle() -> None:
     logger.info("trade_dhan: === starting cycle %s UTC ===",
                 datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M"))
 
+    global _dhan_data
     client = get_dhan_client()
     if client is None:
         return
+
+    # Initialise shared Dhan data layer — used by check_supertrend_conditions
+    _dhan_data = DhanData(client)
 
     state     = _load_state()
     holdings  = get_holdings(client)
@@ -391,7 +393,7 @@ def run_trade_cycle() -> None:
         for symbol, pos in list(open_positions.items()):
             entry_price = pos["entry_price"]
             qty         = pos["qty"]
-            ltp = get_ltp(symbol, client) or holdings.get(symbol, {}).get("ltp")
+            ltp = _dhan_data.get_ltp(symbol) or holdings.get(symbol, {}).get("ltp")
             if ltp is None:
                 continue
 
@@ -445,7 +447,7 @@ def run_trade_cycle() -> None:
             if symbol in state.get(other_strat, {}):
                 continue
 
-            ltp = get_ltp(symbol, client)
+            ltp = _dhan_data.get_ltp(symbol)
             if ltp is None:
                 continue
 

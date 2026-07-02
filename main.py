@@ -503,6 +503,15 @@ def main():
         except Exception as _exc:
             logger.warning("trade: failed to write qualified CSV: %s", _exc)
 
+    # Also write SmallMicro output if available
+    if smallmicro_df is not None and not smallmicro_df.empty:
+        try:
+            smallmicro_df.to_csv(getattr(config, 'TRADE_SMALLMICRO_CSV_PATH',
+                                 'cache/smallmicro_latest.csv'), index=False)
+            logger.info('trade: SmallMicro qualified list written (%d rows)', len(smallmicro_df))
+        except Exception as _exc2:
+            logger.warning('trade: failed to write SmallMicro CSV: %s', _exc2)
+
     # ── Daily notification (Telegram + Email) — non-fatal; never blocks/fails
     # the scan. Reads the same nse_df/us_df/smallmicro_df already computed
     # above, so the notification reflects exactly this run's fresh data. See
