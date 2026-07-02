@@ -35,6 +35,7 @@ from dhanhq import DhanContext, dhanhq
 
 import config
 from dhan_data import DhanData
+from market_hours import is_within_trading_window
 from supertrend import get_supertrend_state, compute_supertrend, supertrend_signals
 
 logger = logging.getLogger(__name__)
@@ -330,6 +331,12 @@ def run_trade_cycle() -> None:
 
     logger.info("trade_mtf: === starting MTF cycle %s UTC ===",
                 datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M"))
+
+    # GitHub Actions cron triggers can fire late (queue delays). If this
+    # run woke up outside the actual trading window, bail out before any
+    # API calls or Telegram alerts — a delayed cron should be a no-op.
+    if not is_within_trading_window():
+        return
 
     client = get_dhan_client()
     if client is None:

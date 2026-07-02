@@ -27,6 +27,7 @@ import requests
 import yfinance as yf
 
 import config
+from market_hours import is_within_trading_window
 from supertrend import compute_supertrend, supertrend_signals
 
 logger = logging.getLogger(__name__)
@@ -244,6 +245,12 @@ def send_watchlist_alert(watchlist: dict[str, list[dict]]) -> None:
 
 def run_watchlist() -> None:
     """Main entry point — called by trade_scan_dhan workflow at 9:15 AM."""
+    # This is only meant to fire once, right at market open. If the cron
+    # got delayed and is now firing well into (or after) trading hours,
+    # skip it rather than sending a stale "9:15 AM" watchlist hours late.
+    if not is_within_trading_window():
+        return
+
     logger.info("watchlist: building pre-signal watchlist...")
     watchlist = build_watchlist()
     send_watchlist_alert(watchlist)
