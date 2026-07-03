@@ -57,10 +57,11 @@ jobs:
       - name: Write Google service account credentials
         run: echo "${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON_B64 }}" | base64 --decode > service_account.json
 
-      - name: Run watchlist (9:15 AM run only)
-        # Only send watchlist on the scheduled 9:15 AM IST run (3:45 UTC cron).
-        # Excluded from workflow_dispatch (manual triggers) to avoid spam.
-        if: github.event_name == 'schedule' && contains(github.event.schedule, '45 3')
+      - name: Run watchlist (self-decides if today's watchlist still needs sending)
+        # No longer gated to a specific cron string — that broke silently
+        # whenever GitHub dropped/delayed the exact 9:15 AM trigger under
+        # load. watchlist.py now tracks "sent today" in cache/watchlist_state.json
+        # and catches up on whichever run fires first after market open.
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -96,6 +97,6 @@ jobs:
           git config user.name "scanner-bot"
           git config user.email "actions@github.com"
           git pull --rebase origin main || true
-          git add cache/trade_state.json 2>/dev/null || true
+          git add cache/trade_state.json cache/watchlist_state.json 2>/dev/null || true
           git diff --quiet --cached || git commit -m "Update trade state [skip ci]"
           git push || true

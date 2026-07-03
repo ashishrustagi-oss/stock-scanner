@@ -19,6 +19,8 @@ the live trade system.
 Called by the trade_scan_dhan workflow at 9:15 AM IST.
 """
 
+import datetime
+import json
 import logging
 import os
 
@@ -27,7 +29,7 @@ import requests
 import yfinance as yf
 
 import config
-from market_hours import is_within_trading_window
+from market_hours import is_within_trading_window, now_ist, MARKET_OPEN
 from supertrend import compute_supertrend, supertrend_signals
 
 logger = logging.getLogger(__name__)
@@ -36,6 +38,9 @@ ST_SLOW_PERIOD = 10; ST_SLOW_MULT = 3.0
 ST_FAST_PERIOD = 2;  ST_FAST_MULT = 1.0
 IMMINENT_THRESHOLD_PCT = 2.0   # price within 2% of ST(2,1) line
 RECENT_DAYS = 2                # crossover within last N trading days
+
+WATCHLIST_STATE_PATH     = "cache/watchlist_state.json"
+WATCHLIST_CATCHUP_CUTOFF = datetime.time(11, 0)  # give up catching up after this (IST)
 
 
 def _fetch_ohlcv(symbol: str, interval: str, period: str) -> pd.DataFrame | None:
@@ -243,12 +248,63 @@ def send_watchlist_alert(watchlist: dict[str, list[dict]]) -> None:
         logger.error("watchlist: Telegram send failed: %s", exc)
 
 
+def _load_watchlist_state() -> dict:
+    try:
+        with open(WATCHLIST_STATE_PATH) as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def _save_watchlist_state(state: dict) -> None:
+    os.makedirs(os.path.dirname(WATCHLIST_STATE_PATH), exist_ok=True)
+    with open(WATCHLIST_STATE_PATH, "w") as f:
+        json.dump(state, f)
+
+
+def _should_send_watchlist() -> bool:
+    """
+    Self-healing check, replacing the old "only on the literal 9:15 AM
+    cron string" condition. That approach silently failed whenever
+    GitHub dropped/skipped that exact scheduled trigger under load —
+    no later run would ever match, so the whole day went without a
+    watchlist even though other trade cycles ran fine.
+
+    Instead: has today's watchlist already been sent? If not, and
+    we're still within a reasonable catch-up window after market open,
+    send it now. Whichever run fires first after 9:15 AM catches it,
+    regardless of which specific cron slot GitHub actually delivered.
+    """
+    ist = now_ist()
+    today = ist.date().isoformat()
+
+    state = _load_watchlist_state()
+    if state.get("last_sent_date") == today:
+        return False
+
+    if ist.time() < MARKET_OPEN:
+        return False
+
+    if ist.time() > WATCHLIST_CATCHUP_CUTOFF:
+        logger.info(
+            "watchlist: past catch-up cutoff (%s IST) and not yet sent today — giving up for today",
+            WATCHLIST_CATCHUP_CUTOFF
+        )
+        return False
+
+    return True
+
+
 def run_watchlist() -> None:
-    """Main entry point — called by trade_scan_dhan workflow at 9:15 AM."""
+    """Main entry point — called every trade_scan_dhan cycle; self-decides
+    whether today's watchlist still needs to be sent."""
     # This is only meant to fire once, right at market open. If the cron
     # got delayed and is now firing well into (or after) trading hours,
     # skip it rather than sending a stale "9:15 AM" watchlist hours late.
     if not is_within_trading_window():
+        return
+
+    if not _should_send_watchlist():
         return
 
     logger.info("watchlist: building pre-signal watchlist...")
@@ -256,6 +312,8 @@ def run_watchlist() -> None:
     send_watchlist_alert(watchlist)
     logger.info("watchlist: done — imminent=%d, recent=%d",
                 len(watchlist["imminent"]), len(watchlist["recent"]))
+
+    _save_watchlist_state({"last_sent_date": now_ist().date().isoformat()})
 
 
 if __name__ == "__main__":
