@@ -191,15 +191,17 @@ def send_watchlist_alert(watchlist: dict[str, list[dict]]) -> None:
     imminent = watchlist.get("imminent", [])
     recent   = watchlist.get("recent", [])
 
+    header_time = now_ist().strftime("%H:%M IST")
+
     if not imminent and not recent:
         msg = (
-            "👁 *PRE-SIGNAL WATCHLIST — 9:15 AM*\n"
+            f"👁 *PRE-SIGNAL WATCHLIST — {header_time}*\n"
             "No stocks currently in trigger zone.\n"
             "All qualified stocks either already in position or "
             "ST(2,1) not yet approaching crossover."
         )
     else:
-        lines = ["👁 *PRE-SIGNAL WATCHLIST — 9:15 AM*\n"]
+        lines = [f"👁 *PRE-SIGNAL WATCHLIST — {header_time}*\n"]
 
         if imminent:
             lines.append("🎯 *IMMINENT* — price within 2% of ST(2,1) line:")
