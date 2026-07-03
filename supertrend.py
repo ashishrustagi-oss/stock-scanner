@@ -88,18 +88,28 @@ def compute_supertrend(df: pd.DataFrame, period: int = 10, multiplier: float = 3
         if np.isnan(bu[i]) or np.isnan(bl[i]):
             continue
 
-        # Upper band: only tighten (move down) if previous close was below it
-        upper[i] = bu[i] if (bu[i] < upper[i-1] or close[i-1] > upper[i-1]) else upper[i-1]
-        # Lower band: only tighten (move up) if previous close was above it
-        lower[i] = bl[i] if (bl[i] > lower[i-1] or close[i-1] < lower[i-1]) else lower[i-1]
-
-        # Direction
-        if bull[i-1]:
-            # Was bullish: stay bullish unless price drops below lower band
-            bull[i] = close[i] >= lower[i]
+        if np.isnan(upper[i-1]):
+            # First bar with valid ATR data — there's no previous band to
+            # tighten against yet, so seed the bands directly from the
+            # basic (untightened) values instead of trying to compare
+            # against NaN (which always evaluates False and would lock
+            # upper/lower at NaN forever from this point on).
+            upper[i] = bu[i]
+            lower[i] = bl[i]
+            bull[i]  = close[i] >= lower[i]
         else:
-            # Was bearish: flip to bullish if price rises above upper band
-            bull[i] = close[i] > upper[i]
+            # Upper band: only tighten (move down) if previous close was below it
+            upper[i] = bu[i] if (bu[i] < upper[i-1] or close[i-1] > upper[i-1]) else upper[i-1]
+            # Lower band: only tighten (move up) if previous close was above it
+            lower[i] = bl[i] if (bl[i] > lower[i-1] or close[i-1] < lower[i-1]) else lower[i-1]
+
+            # Direction
+            if bull[i-1]:
+                # Was bullish: stay bullish unless price drops below lower band
+                bull[i] = close[i] >= lower[i]
+            else:
+                # Was bearish: flip to bullish if price rises above upper band
+                bull[i] = close[i] > upper[i]
 
         st[i] = lower[i] if bull[i] else upper[i]
 
