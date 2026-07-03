@@ -1,10 +1,13 @@
 name: Dhan Token Refresh
-# Refreshes Dhan access token daily at 8:45 AM IST
+# Refreshes Dhan access token daily ~8:51 AM IST (offset off the round
+# :15 mark — GitHub's cron queue is heaviest right on :00/:15/:30/:45,
+# which caused delayed/dropped triggers). Keeps the same ~30 min buffer
+# before the first trade_scan_dhan cron (3:51 UTC / 9:21 AM IST).
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: "15 3 * * 1-5"
+    - cron: "21 3 * * 1-5"
 
 permissions:
   contents: read

@@ -2,10 +2,11 @@ name: Daily Stock Scan
 
 on:
   schedule:
-    # 23:30 UTC = after both NSE close (10:00 UTC) and US market close
-    # (20:00-21:00 UTC depending on DST). Adjust as you like — GitHub Actions
-    # cron can run a few minutes late during periods of high platform load.
-    - cron: "30 23 * * 1-5"   # Mon-Fri only
+    # 23:36 UTC (~5:06 AM IST) = after both NSE close (10:00 UTC) and US
+    # market close. Offset +6 min off the round :30 mark — GitHub's cron
+    # queue is heaviest right on :00/:15/:30/:45, which was observed
+    # causing this run to fire up to ~97 min late.
+    - cron: "36 23 * * 1-5"   # Mon-Fri only
   workflow_dispatch: {}        # lets you trigger a run manually from the Actions tab
 
 permissions:

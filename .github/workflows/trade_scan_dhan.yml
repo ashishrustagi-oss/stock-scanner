@@ -3,35 +3,38 @@ name: Trade Scan Dhan (Intraday)
 on:
   workflow_dispatch: {}
   schedule:
-    # 9:15 AM IST = 3:45 UTC — first run sends watchlist + trade cycle
-    # Then every 15 min until 3:45 PM IST = 10:15 UTC
-    - cron: "45 3 * * 1-5"
-    - cron: "0 4 * * 1-5"
-    - cron: "15 4 * * 1-5"
-    - cron: "30 4 * * 1-5"
-    - cron: "45 4 * * 1-5"
-    - cron: "0 5 * * 1-5"
-    - cron: "15 5 * * 1-5"
-    - cron: "30 5 * * 1-5"
-    - cron: "45 5 * * 1-5"
-    - cron: "0 6 * * 1-5"
-    - cron: "15 6 * * 1-5"
-    - cron: "30 6 * * 1-5"
-    - cron: "45 6 * * 1-5"
-    - cron: "0 7 * * 1-5"
-    - cron: "15 7 * * 1-5"
-    - cron: "30 7 * * 1-5"
-    - cron: "45 7 * * 1-5"
-    - cron: "0 8 * * 1-5"
-    - cron: "15 8 * * 1-5"
-    - cron: "30 8 * * 1-5"
-    - cron: "45 8 * * 1-5"
-    - cron: "0 9 * * 1-5"
-    - cron: "15 9 * * 1-5"
-    - cron: "30 9 * * 1-5"
-    - cron: "45 9 * * 1-5"
-    - cron: "0 10 * * 1-5"
-    - cron: "15 10 * * 1-5"
+    # Target: ~9:15 AM-3:45 PM IST every 15 min. Deliberately offset +6 min
+    # off the round :00/:15/:30/:45 marks — GitHub's scheduler queues
+    # heaviest right on those marks (every repo on GitHub fires at once),
+    # which was causing triggers to be delayed by 30-90+ min or dropped
+    # outright. Off-round minutes queue far more reliably.
+    - cron: "51 3 * * 1-5"
+    - cron: "6 4 * * 1-5"
+    - cron: "21 4 * * 1-5"
+    - cron: "36 4 * * 1-5"
+    - cron: "51 4 * * 1-5"
+    - cron: "6 5 * * 1-5"
+    - cron: "21 5 * * 1-5"
+    - cron: "36 5 * * 1-5"
+    - cron: "51 5 * * 1-5"
+    - cron: "6 6 * * 1-5"
+    - cron: "21 6 * * 1-5"
+    - cron: "36 6 * * 1-5"
+    - cron: "51 6 * * 1-5"
+    - cron: "6 7 * * 1-5"
+    - cron: "21 7 * * 1-5"
+    - cron: "36 7 * * 1-5"
+    - cron: "51 7 * * 1-5"
+    - cron: "6 8 * * 1-5"
+    - cron: "21 8 * * 1-5"
+    - cron: "36 8 * * 1-5"
+    - cron: "51 8 * * 1-5"
+    - cron: "6 9 * * 1-5"
+    - cron: "21 9 * * 1-5"
+    - cron: "36 9 * * 1-5"
+    - cron: "51 9 * * 1-5"
+    - cron: "6 10 * * 1-5"
+    - cron: "21 10 * * 1-5"
 
 permissions:
   contents: write
