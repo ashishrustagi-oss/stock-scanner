@@ -29,6 +29,7 @@ import json
 import logging
 import os
 import sys
+import time
 
 import pandas as pd
 
@@ -37,6 +38,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import config  # noqa: E402
 import data_fetch  # noqa: E402
 import sp500_point_in_time as spt  # noqa: E402
+from known_ticker_renames import KNOWN_TICKER_RENAMES  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("sp500_coverage_probe")
@@ -48,10 +50,17 @@ REPORT_PATH = "cache/sp500_coverage_report.json"
 
 def collect_all_members_in_window(start: str, end: str) -> dict[str, list[str]]:
     """
-    Returns {ticker: [first_seen_date, last_seen_date]} for every ticker that
-    appeared in the point-in-time universe at least once between start/end.
-    This tells us the membership window we EXPECT price data to cover,
-    which is different (and usually shorter) than "IPO to delisting."
+    Returns {yf_ticker: [first_seen_date, last_seen_date]} for every ticker
+    that appeared in the point-in-time universe at least once between
+    start/end. This tells us the membership window we EXPECT price data to
+    cover, which is different (and usually shorter) than "IPO to delisting."
+
+    Tickers are converted to yfinance format (dots -> dashes, e.g. "BRK.B"
+    -> "BRK-B") here — matching sp500_point_in_time.get_point_in_time_
+    sp500_universe(), which does the same conversion. Skipping this step
+    was a bug in an earlier version of this script: yfinance genuinely has
+    no symbol called "BRK.B", so it was reporting real, currently-trading
+    stocks as "no data" purely because of the punctuation mismatch.
     """
     timeline = spt.get_timeline()
     window = [row for row in timeline if start <= row["date"] <= end]
@@ -59,7 +68,8 @@ def collect_all_members_in_window(start: str, end: str) -> dict[str, list[str]]:
     first_seen: dict[str, str] = {}
     last_seen: dict[str, str] = {}
     for row in window:
-        for t in row["tickers"]:
+        for raw_t in row["tickers"]:
+            t = raw_t.replace(".", "-")
             if t not in first_seen:
                 first_seen[t] = row["date"]
             last_seen[t] = row["date"]
@@ -77,13 +87,49 @@ def check_coverage(membership: dict[str, list[str]]) -> dict:
     no_data = []
     partial_coverage = []
     ok = []
+    initial_failures = [t for t in tickers if t not in price_data or price_data[t].empty]
 
-    for ticker, (first, last) in membership.items():
-        if ticker not in price_data or price_data[ticker].empty:
-            no_data.append({"ticker": ticker, "expected_window": [first, last]})
+    if initial_failures:
+        logger.info(
+            "%d tickers failed in the main batch run — retrying individually "
+            "(isolated, slower calls) before treating them as genuinely missing, "
+            "since large-batch runs can trip Yahoo's rate limiting even for "
+            "valid tickers.", len(initial_failures),
+        )
+        recovered = 0
+        for t in initial_failures:
+            time.sleep(1.0)  # deliberately slow — one ticker at a time, not a batch
+            retry_result = data_fetch.fetch_price_history_range([t], BACKTEST_START, BACKTEST_END)
+            if t in retry_result and not retry_result[t].empty:
+                price_data[t] = retry_result[t]
+                recovered += 1
+        logger.info(
+            "Retry pass recovered %d/%d initially-failed tickers — these were "
+            "rate-limiting artifacts, not real gaps.", recovered, len(initial_failures),
+        )
+
+    for raw_ticker, (first, last) in membership.items():
+        # Check known renames too: if the raw ticker itself has no data but a
+        # documented successor ticker does, treat the successor's data as
+        # this entity's continuation rather than a gap. See known_renames.py.
+        ticker = raw_ticker
+        renamed_to = KNOWN_TICKER_RENAMES.get(raw_ticker)
+
+        candidates = [ticker] + ([renamed_to] if renamed_to else [])
+        found = None
+        for c in candidates:
+            if c in price_data and not price_data[c].empty:
+                found = c
+                break
+
+        if found is None:
+            entry = {"ticker": raw_ticker, "expected_window": [first, last]}
+            if renamed_to:
+                entry["note"] = f"mapped to {renamed_to} in KNOWN_TICKER_RENAMES but still no data — verify manually"
+            no_data.append(entry)
             continue
 
-        df = price_data[ticker]
+        df = price_data[found]
         actual_first = df.index.min().strftime("%Y-%m-%d")
         actual_last = df.index.max().strftime("%Y-%m-%d")
 
@@ -94,19 +140,25 @@ def check_coverage(membership: dict[str, list[str]]) -> dict:
         actual_first_ts = pd.Timestamp(actual_first)
         actual_last_ts = pd.Timestamp(actual_last)
 
-        gap_at_start = (actual_first_ts - expected_first).days > 60
+        # If we're using a renamed successor ticker, only check the START of
+        # the window against the ORIGINAL ticker's membership start — the
+        # successor's own trading history naturally won't extend back to
+        # cover it, that's expected, not a gap. The end-of-window check still
+        # applies normally to the successor's data.
+        gap_at_start = (actual_first_ts - expected_first).days > 60 if not renamed_to else False
         gap_at_end = (expected_last - actual_last_ts).days > 60
 
         if gap_at_start or gap_at_end:
             partial_coverage.append({
-                "ticker": ticker,
+                "ticker": raw_ticker,
+                "resolved_via_rename": renamed_to if found == renamed_to else None,
                 "expected_window": [first, last],
                 "actual_window": [actual_first, actual_last],
                 "gap_at_start_days": max(0, (actual_first_ts - expected_first).days),
                 "gap_at_end_days": max(0, (expected_last - actual_last_ts).days),
             })
         else:
-            ok.append(ticker)
+            ok.append(raw_ticker)
 
     report = {
         "generated_at": datetime.datetime.now().isoformat(),
