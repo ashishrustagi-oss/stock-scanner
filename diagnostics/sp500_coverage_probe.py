@@ -50,31 +50,13 @@ REPORT_PATH = "cache/sp500_coverage_report.json"
 
 def collect_all_members_in_window(start: str, end: str) -> dict[str, list[str]]:
     """
-    Returns {yf_ticker: [first_seen_date, last_seen_date]} for every ticker
-    that appeared in the point-in-time universe at least once between
-    start/end. This tells us the membership window we EXPECT price data to
-    cover, which is different (and usually shorter) than "IPO to delisting."
-
-    Tickers are converted to yfinance format (dots -> dashes, e.g. "BRK.B"
-    -> "BRK-B") here — matching sp500_point_in_time.get_point_in_time_
-    sp500_universe(), which does the same conversion. Skipping this step
-    was a bug in an earlier version of this script: yfinance genuinely has
-    no symbol called "BRK.B", so it was reporting real, currently-trading
-    stocks as "no data" purely because of the punctuation mismatch.
+    Thin wrapper — the actual logic now lives in
+    sp500_point_in_time.get_all_members_in_window() so backtest.py can reuse
+    the exact same implementation rather than each script carrying its own
+    (slightly-drifting) copy. Kept as a wrapper here so this script's
+    existing call sites below don't need to change.
     """
-    timeline = spt.get_timeline()
-    window = [row for row in timeline if start <= row["date"] <= end]
-
-    first_seen: dict[str, str] = {}
-    last_seen: dict[str, str] = {}
-    for row in window:
-        for raw_t in row["tickers"]:
-            t = raw_t.replace(".", "-")
-            if t not in first_seen:
-                first_seen[t] = row["date"]
-            last_seen[t] = row["date"]
-
-    return {t: [first_seen[t], last_seen[t]] for t in first_seen}
+    return spt.get_all_members_in_window(start, end)
 
 
 def check_coverage(membership: dict[str, list[str]]) -> dict:

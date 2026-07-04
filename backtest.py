@@ -31,6 +31,7 @@ confirmed a smaller run completes in a reasonable time. Run via the separate
 """
 
 import datetime
+import functools
 import logging
 import sys
 
@@ -42,6 +43,7 @@ import data_fetch
 import metrics_builder
 import scoring as sc
 import sheets_export
+import sp500_point_in_time as spt
 import universe
 
 logging.basicConfig(
@@ -112,6 +114,59 @@ def compute_signals_for_snapshot(
     metrics_df = sc.compute_phase1_additions(metrics_df)
     metrics_df = sc.compute_trend_death(metrics_df)
     return metrics_df
+
+
+def compute_us_signals_for_snapshot_pit(
+    price_data: dict[str, pd.DataFrame], index_close_full: pd.Series, asof_date,
+    timeline: list[dict] | None = None,
+) -> pd.DataFrame:
+    """
+    Point-in-time-correct variant of compute_signals_for_snapshot, for the
+    US GARP strategy's backtest. Same technical-indicator computation
+    (build_metrics_row, compute_composite, compute_elite_compounder_score —
+    reused unchanged), but additionally restricts each snapshot to only the
+    tickers that were ACTUALLY S&P 500 members on asof_date, via
+    sp500_point_in_time.get_sp500_members_asof(). Without this filter, a
+    stock added to the index in 2020 would incorrectly appear "eligible" in
+    a 2010 snapshot just because its price history happens to exist that
+    far back — a look-ahead-inclusion bias in the OPPOSITE direction from
+    the survivorship bias sp500_point_in_time.py was built to fix, but
+    just as capable of inflating backtest results if left unguarded.
+
+    SCOPE — READ BEFORE INTERPRETING RESULTS: this tests ONLY the technical
+    signals already in SIGNAL_DEFINITIONS (composite_score, EliteCompounder
+    Score, obv_52w_high, trend_birth, etc.) against the REAL point-in-time
+    S&P 500 membership and price history. It does NOT test the US GARP
+    composite from scoring_us.py (Growth/Value/Quality/Technical). That
+    composite depends on fundamentals.py's GARP fields (peg_ratio, ev_ebitda,
+    fcf_trend_pct, margin trends), which — exactly like the existing
+    "fundamentals are not historically reconstructed" simplification
+    documented at the top of this module — can only be fetched as CURRENT
+    trailing data from yfinance, not point-in-time historical data. Wiring
+    scoring_us.compute_us_composite() into a 2008-2015 backtest using
+    today's fundamentals would silently use 2026-known information to
+    "predict" 2010 returns — a direct violation of this module's own
+    no-lookahead-bias principle stated at the top of this file. DO NOT do
+    this as a shortcut. The GARP composite backtest stays blocked until a
+    genuine point-in-time fundamentals source (e.g. SEC EDGAR XBRL, see
+    README_US.md open item) is built. This function exists to validate the
+    TECHNICAL half of the strategy now, honestly, rather than fake-validate
+    the whole thing.
+
+    "sector" here is a best-effort join from CURRENT constituent labels
+    (same caveat as get_point_in_time_sp500_universe's name/sector join) —
+    fine for the Technical-only signals tested here (none of which use
+    sector), but NOT sufficiently reliable to backtest the GARP Value
+    bucket's within-sector EV/EBITDA ranking, which is another reason that
+    composite isn't wired in here yet.
+    """
+    if timeline is None:
+        timeline = spt.get_timeline()
+
+    valid_tickers = set(spt.get_sp500_members_asof(asof_date, timeline=timeline))
+    filtered_price_data = {t: df for t, df in price_data.items() if t in valid_tickers}
+
+    return compute_signals_for_snapshot(filtered_price_data, index_close_full, asof_date)
 
 
 def compute_smallmicro_signals_for_snapshot(
@@ -430,12 +485,57 @@ def main():
             "also isn't tested here (no point-in-time historical quarterly data) — "
             "see the same docstring."
         )
+    elif universe_label == "SP500_PointInTime":
+        if not config.BACKTEST_DATE_RANGE_MODE:
+            logger.error(
+                "SP500_PointInTime requires BACKTEST_DATE_RANGE_MODE=True with "
+                "BACKTEST_DATE_RANGE_START/END set (e.g. the two-era GARP backtest "
+                "windows from README_US.md) — point-in-time membership needs an "
+                "explicit window to know which tickers to fetch. Falling back to "
+                "today's constituent list (same as plain 'SP500') for this run."
+            )
+            uni_df = universe.get_sp500_universe()
+            snapshot_fn = compute_signals_for_snapshot
+        else:
+            timeline = spt.get_timeline()
+            membership = spt.get_all_members_in_window(
+                config.BACKTEST_DATE_RANGE_START, config.BACKTEST_DATE_RANGE_END, timeline=timeline,
+            )
+            uni_df = pd.DataFrame({"yf_ticker": list(membership.keys())})
+            snapshot_fn = functools.partial(compute_us_signals_for_snapshot_pit, timeline=timeline)
+            logger.info(
+                "SP500_PointInTime: %d unique tickers were ever S&P 500 members "
+                "during %s to %s (fetching all of them; each snapshot date will "
+                "then be restricted to only the tickers actually in the index on "
+                "that specific date — see compute_us_signals_for_snapshot_pit).",
+                len(membership), config.BACKTEST_DATE_RANGE_START, config.BACKTEST_DATE_RANGE_END,
+            )
+        index_ticker = config.INDEX_TICKER_US
+        signal_definitions = SIGNAL_DEFINITIONS
+        results_tab_name = f"{config.BACKTEST_RESULTS_TAB_NAME}_PointInTime"
+        logger.warning(
+            "SP500_PointInTime tests TECHNICAL signals only (composite_score, "
+            "EliteCompounderScore, obv_52w_high, etc.) against real historical "
+            "index membership. It does NOT test the US GARP composite "
+            "(scoring_us.py) — that needs point-in-time fundamentals, which "
+            "don't exist yet. See compute_us_signals_for_snapshot_pit's "
+            "docstring before interpreting these results as validating the "
+            "full US strategy."
+        )
     else:
         uni_df = universe.get_sp500_universe()
         index_ticker = config.INDEX_TICKER_US
         snapshot_fn = compute_signals_for_snapshot
         signal_definitions = SIGNAL_DEFINITIONS
         results_tab_name = config.BACKTEST_RESULTS_TAB_NAME
+        if universe_label == "SP500":
+            logger.warning(
+                "SP500 backtest (NOT point-in-time): this universe is fetched fresh "
+                "from TODAY's constituent list, same survivorship-bias caveat as "
+                "NSE_SmallMicro below. Use BACKTEST_UNIVERSE='SP500_PointInTime' "
+                "instead for a survivorship-bias-corrected run — see "
+                "sp500_point_in_time.py and README_US.md."
+            )
 
     tickers = uni_df["yf_ticker"].tolist()
     if config.BACKTEST_MAX_TICKERS:

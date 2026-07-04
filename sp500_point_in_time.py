@@ -175,6 +175,45 @@ def get_sp500_members_asof(asof_date, timeline: list[dict] | None = None) -> lis
     return timeline[idx]["tickers"]
 
 
+def get_all_members_in_window(start, end, timeline: list[dict] | None = None) -> dict[str, list[str]]:
+    """
+    Returns {yf_ticker: [first_seen_date, last_seen_date]} for every ticker
+    that was an S&P 500 member at least once between start and end.
+
+    This answers a DIFFERENT question than get_sp500_members_asof(): that
+    function asks "who was in the index on THIS SPECIFIC DATE"; this one
+    asks "who should my price-data fetch cover for this WHOLE BACKTEST
+    WINDOW". Used to build the ticker list to fetch once, before a
+    multi-snapshot backtest — then get_sp500_members_asof() is used inside
+    the per-snapshot loop to correctly restrict to only the tickers that
+    were ACTUALLY members on each individual snapshot date. Using this
+    function's output as if it were valid on every date within the window
+    would reintroduce the exact look-ahead-inclusion bias this module
+    exists to prevent (a stock added to the index in 2020 would incorrectly
+    appear "eligible" in a 2010 snapshot).
+
+    Tickers are yfinance-formatted (dots -> dashes) — matching
+    get_point_in_time_sp500_universe().
+    """
+    if timeline is None:
+        timeline = get_timeline()
+
+    start_str = pd.Timestamp(start).strftime("%Y-%m-%d")
+    end_str = pd.Timestamp(end).strftime("%Y-%m-%d")
+    window = [row for row in timeline if start_str <= row["date"] <= end_str]
+
+    first_seen: dict[str, str] = {}
+    last_seen: dict[str, str] = {}
+    for row in window:
+        for raw_t in row["tickers"]:
+            t = raw_t.replace(".", "-")
+            if t not in first_seen:
+                first_seen[t] = row["date"]
+            last_seen[t] = row["date"]
+
+    return {t: [first_seen[t], last_seen[t]] for t in first_seen}
+
+
 def get_point_in_time_sp500_universe(asof_date, timeline: list[dict] | None = None) -> pd.DataFrame:
     """
     Returns a DataFrame shaped like universe.get_sp500_universe():
