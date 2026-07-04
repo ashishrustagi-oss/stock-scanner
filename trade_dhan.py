@@ -277,6 +277,8 @@ def check_supertrend_conditions(symbol: str) -> dict:
     result["weekly_10_3_bullish"] = get_supertrend_state(
         weekly_df, ST_SLOW_PERIOD, ST_SLOW_MULT)["bullish"]
 
+    time.sleep(0.15)  # micro-throttle between internal Data API calls
+
     daily_df = _dhan_data.get_daily(symbol, days=400)
     if daily_df is None or len(daily_df) < 15:
         result["error"] = "insufficient daily data"

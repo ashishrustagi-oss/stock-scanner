@@ -120,6 +120,8 @@ def check_mtf_conditions(symbol: str) -> dict:
     result["weekly_10_3_bullish"] = w_slow["bullish"]
     result["weekly_2_1_bullish"]  = w_fast["bullish"]
 
+    time.sleep(0.15)  # micro-throttle between internal Data API calls
+
     # Daily data — layers 4 + 5 + exit signal
     daily_df = _dhan_data.get_daily(symbol, days=400)
     if daily_df is None or len(daily_df) < 15:
@@ -142,6 +144,8 @@ def check_mtf_conditions(symbol: str) -> dict:
 
     if not result["eligible_for_entry"]:
         return result   # skip 15-min fetch if higher TF filters fail
+
+    time.sleep(0.15)  # micro-throttle between internal Data API calls
 
     # 15-min data — entry trigger
     intra_df = _dhan_data.get_intraday(symbol, interval=INTRA_INTERVAL, days=5)
