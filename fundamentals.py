@@ -116,6 +116,179 @@ def _extract_earnings_acceleration(tk: "yf.Ticker") -> dict:
     return out
 
 
+def _extract_garp_metrics(tk: "yf.Ticker", profit_cagr: float) -> dict:
+    """
+    US GARP strategy (Growth At a Reasonable Price) additions — Value and
+    Quality score inputs. Isolated the same way _extract_earnings_acceleration
+    is: a failure here must not take down the core NSE-used fundamentals
+    computed above it in _get_fundamentals_single.
+
+    NOT used by the NSE strategies — these fields are additive, existing
+    NSE scoring/filtering code never reads them.
+
+    Returns:
+      peg_ratio          — trailing P/E / profit_cagr (%). Reuses profit_cagr
+                            already computed above rather than pulling
+                            separate forward-estimate data — keeps this
+                            consistent with the Era 1 (2008-2015) backtest,
+                            which deliberately has no analyst estimates
+                            available; using trailing growth here means the
+                            SAME formula works unchanged in both eras.
+      ev_ebitda          — enterprise value / EBITDA, RAW (not yet compared
+                            to sector — that comparison needs the full
+                            universe DataFrame and happens in scoring, not
+                            here per-ticker).
+      fcf_latest         — most recent annual free cash flow (operating cash
+                            flow - capex).
+      fcf_trend_pct      — % change in FCF from the earliest to latest
+                            available year (same n_years window as sales/
+                            profit CAGR above, for consistency). NaN if FCF
+                            crossed zero in that window (a % change across a
+                            sign flip isn't meaningful — same convention as
+                            _cagr's sign-change guard).
+      gross_margin_trend — percentage-point change in gross margin from
+                            earliest to latest available year (positive =
+                            improving/expanding margins).
+      operating_margin_trend — same, for operating margin.
+      garp_data_quality  — "ok" / "partial" / "missing", counting how many
+                            of {peg_ratio, ev_ebitda, fcf_trend_pct,
+                            gross_margin_trend} were computable.
+    """
+    out = {
+        "peg_ratio": np.nan,
+        "ev_ebitda": np.nan,
+        "fcf_latest": np.nan,
+        "fcf_trend_pct": np.nan,
+        "gross_margin_trend": np.nan,
+        "operating_margin_trend": np.nan,
+        "garp_data_quality": "missing",
+    }
+    fields_found = 0
+
+    try:
+        # --- PEG ratio ---
+        trailing_pe = None
+        try:
+            info = tk.info  # noqa: F841 - yfinance lazy-loads this; can be slow/flaky, hence try/except
+            trailing_pe = info.get("trailingPE")
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("trailingPE fetch failed for %s: %s", tk.ticker, exc)
+
+        if trailing_pe is not None and profit_cagr is not None and not np.isnan(profit_cagr) and profit_cagr > 0:
+            out["peg_ratio"] = float(trailing_pe / profit_cagr)
+            fields_found += 1
+
+        # --- EV/EBITDA (raw; sector comparison happens later in scoring) ---
+        income = tk.income_stmt
+        balance = tk.balance_sheet
+        cashflow = tk.cashflow
+
+        ebitda = None
+        if income is not None and not income.empty:
+            latest_col = income.columns.sort_values(ascending=True)[-1]
+            if "EBITDA" in income.index:
+                ebitda = income.loc["EBITDA", latest_col]
+            else:
+                ebit = None
+                for candidate in ["EBIT", "Operating Income"]:
+                    if candidate in income.index:
+                        ebit = income.loc[candidate, latest_col]
+                        break
+                d_and_a = None
+                if cashflow is not None and not cashflow.empty:
+                    dep_col = cashflow.columns.sort_values(ascending=True)[-1]
+                    for candidate in ["Depreciation And Amortization", "Depreciation"]:
+                        if candidate in cashflow.index:
+                            d_and_a = cashflow.loc[candidate, dep_col]
+                            break
+                if ebit is not None and d_and_a is not None:
+                    ebitda = ebit + abs(d_and_a)
+
+        if ebitda is not None and ebitda != 0 and balance is not None and not balance.empty:
+            latest_bal_col = balance.columns.sort_values(ascending=True)[-1]
+            try:
+                market_cap = tk.fast_info.get("market_cap")
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("market_cap fetch failed for %s: %s", tk.ticker, exc)
+                market_cap = None
+
+            total_debt = (
+                balance.loc["Total Debt", latest_bal_col] if "Total Debt" in balance.index else None
+            )
+            cash = None
+            for candidate in ["Cash And Cash Equivalents", "Cash Cash Equivalents And Short Term Investments"]:
+                if candidate in balance.index:
+                    cash = balance.loc[candidate, latest_bal_col]
+                    break
+
+            if market_cap is not None and total_debt is not None and cash is not None:
+                enterprise_value = market_cap + total_debt - cash
+                out["ev_ebitda"] = float(enterprise_value / ebitda)
+                fields_found += 1
+
+        # --- FCF level + trend ---
+        if cashflow is not None and not cashflow.empty:
+            years_available = cashflow.columns.sort_values(ascending=True)
+            n_years = min(config.FUNDAMENTAL_CAGR_YEARS, len(years_available) - 1)
+            if n_years >= 1 and "Operating Cash Flow" in cashflow.index:
+                first_col, last_col = years_available[-1 - n_years], years_available[-1]
+
+                capex_row = "Capital Expenditure" if "Capital Expenditure" in cashflow.index else None
+
+                ocf_end = cashflow.loc["Operating Cash Flow", last_col]
+                capex_end = cashflow.loc[capex_row, last_col] if capex_row else 0
+                fcf_end = ocf_end + capex_end if pd.notna(ocf_end) else np.nan  # capex already negative in yfinance
+
+                ocf_begin = cashflow.loc["Operating Cash Flow", first_col]
+                capex_begin = cashflow.loc[capex_row, first_col] if capex_row else 0
+                fcf_begin = ocf_begin + capex_begin if pd.notna(ocf_begin) else np.nan
+
+                if not np.isnan(fcf_end):
+                    out["fcf_latest"] = float(fcf_end)
+                    fields_found += 1
+
+                if not np.isnan(fcf_end) and not np.isnan(fcf_begin) and (fcf_begin > 0) == (fcf_end > 0) and fcf_begin != 0:
+                    out["fcf_trend_pct"] = float((fcf_end - fcf_begin) / abs(fcf_begin) * 100)
+
+        # --- Margin trend ---
+        if income is not None and not income.empty:
+            years_available = income.columns.sort_values(ascending=True)
+            n_years = min(config.FUNDAMENTAL_CAGR_YEARS, len(years_available) - 1)
+            if n_years >= 1 and "Total Revenue" in income.index:
+                first_col, last_col = years_available[-1 - n_years], years_available[-1]
+                rev_begin = income.loc["Total Revenue", first_col]
+                rev_end = income.loc["Total Revenue", last_col]
+
+                if "Gross Profit" in income.index and rev_begin and rev_end:
+                    gp_begin = income.loc["Gross Profit", first_col]
+                    gp_end = income.loc["Gross Profit", last_col]
+                    if pd.notna(gp_begin) and pd.notna(gp_end) and rev_begin != 0 and rev_end != 0:
+                        margin_begin = gp_begin / rev_begin * 100
+                        margin_end = gp_end / rev_end * 100
+                        out["gross_margin_trend"] = float(margin_end - margin_begin)
+                        fields_found += 1
+
+                op_row = None
+                for candidate in ["Operating Income", "EBIT"]:
+                    if candidate in income.index:
+                        op_row = candidate
+                        break
+                if op_row and rev_begin and rev_end:
+                    op_begin = income.loc[op_row, first_col]
+                    op_end = income.loc[op_row, last_col]
+                    if pd.notna(op_begin) and pd.notna(op_end) and rev_begin != 0 and rev_end != 0:
+                        op_margin_begin = op_begin / rev_begin * 100
+                        op_margin_end = op_end / rev_end * 100
+                        out["operating_margin_trend"] = float(op_margin_end - op_margin_begin)
+
+        out["garp_data_quality"] = "ok" if fields_found >= 3 else ("partial" if fields_found > 0 else "missing")
+
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("GARP metrics extraction failed for %s: %s", tk.ticker, exc)
+
+    return out
+
+
 def _get_fundamentals_single(yf_ticker: str) -> dict:
     out = {
         "ticker": yf_ticker,
@@ -127,6 +300,9 @@ def _get_fundamentals_single(yf_ticker: str) -> dict:
         "eps_growth_latest_qtr": np.nan, "eps_growth_prev_qtr": np.nan, "eps_acceleration": np.nan,
         "revenue_growth_latest_qtr": np.nan, "revenue_growth_prev_qtr": np.nan, "revenue_acceleration": np.nan,
         "earnings_data_quality": "missing",
+        # US GARP strategy additions — not used by NSE strategies, additive only
+        "peg_ratio": np.nan, "ev_ebitda": np.nan, "fcf_latest": np.nan, "fcf_trend_pct": np.nan,
+        "gross_margin_trend": np.nan, "operating_margin_trend": np.nan, "garp_data_quality": "missing",
     }
     try:
         tk = yf.Ticker(yf_ticker)
@@ -207,6 +383,11 @@ def _get_fundamentals_single(yf_ticker: str) -> dict:
         # Phase 3 (Module 1): earnings acceleration, isolated so a failure
         # here can't take down the annual fundamentals computed above.
         out.update(_extract_earnings_acceleration(tk))
+
+        # US GARP strategy additions, isolated the same way — a failure here
+        # must not affect sales_cagr/profit_cagr/roce/debt_equity above,
+        # which the NSE strategies depend on.
+        out.update(_extract_garp_metrics(tk, out["profit_cagr"]))
 
     except Exception as exc:  # noqa: BLE001
         logger.debug("Fundamentals fetch failed for %s: %s", yf_ticker, exc)
