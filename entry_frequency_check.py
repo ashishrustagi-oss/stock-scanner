@@ -82,10 +82,30 @@ def fetch_weekly(ticker: str) -> pd.DataFrame | None:
 
 
 def strategy1_crossover_dates(daily: pd.DataFrame) -> list:
-    """Days ST(2,1) flipped bullish — the Strategy 1 entry trigger."""
+    """Days ST(2,1) flipped bullish — the Strategy 1 entry trigger (raw, unfiltered)."""
     st = compute_supertrend(daily, ST_FAST_PERIOD, ST_FAST_MULT, prefix="f_")
     st = supertrend_signals(st, prefix="f_")
     return st.index[st["f_st_cross_up"]].tolist()
+
+
+def strategy1_true_entry_days(daily: pd.DataFrame, weekly: pd.DataFrame) -> int:
+    """
+    Matches trade_dhan.py's actual check_supertrend_conditions() exactly:
+    eligible_for_entry = weekly ST(10,3) bullish AND daily ST(10,3) bullish,
+    THEN separately gated on daily ST(2,1) cross_up. All three must align
+    on the same day for a real entry to fire — this is the true (lower)
+    frequency, not the raw ST(2,1) crossover count above.
+    """
+    d10 = compute_supertrend(daily, ST_SLOW_PERIOD, ST_SLOW_MULT, prefix="d10_")
+    d2  = compute_supertrend(daily, ST_FAST_PERIOD, ST_FAST_MULT, prefix="d2_")
+    d2  = supertrend_signals(d2, prefix="d2_")
+
+    w10 = compute_supertrend(weekly, ST_SLOW_PERIOD, ST_SLOW_MULT, prefix="w10_")
+    w10_bull = w10["w10_st_bullish"].reindex(d10.index, method="ffill").fillna(False)
+
+    eligible = d10["d10_st_bullish"].fillna(False) & w10_bull
+    true_entry = eligible & d2["d2_st_cross_up"].reindex(d10.index).fillna(False)
+    return int(true_entry.sum())
 
 
 def strategy2_aligned_days(daily: pd.DataFrame, weekly: pd.DataFrame) -> int:
@@ -116,6 +136,7 @@ def main():
           f"{len(pools['combo'])} combo, {len(all_tickers)} unique tickers\n")
 
     s1_crossover_counts = {}
+    s1_true_entry_counts = {}
     s2_aligned_counts = {}
     s2_total_bars = {}
 
@@ -131,13 +152,17 @@ def main():
 
         weekly = fetch_weekly(ticker)
         if weekly is not None and len(weekly) >= 20:
+            true_entries = strategy1_true_entry_days(daily, weekly)
+            s1_true_entry_counts[ticker] = true_entries
             aligned, total = strategy2_aligned_days(daily, weekly)
             s2_aligned_counts[ticker] = aligned
             s2_total_bars[ticker] = total
         else:
             s2_aligned_counts[ticker] = None
 
-        print(f"ST(2,1) crossovers: {len(crosses)} over ~{LOOKBACK_YEARS}y")
+        print(f"raw ST(2,1) crossovers: {len(crosses)}, "
+              f"TRUE entry days (matches live logic): {s1_true_entry_counts.get(ticker, 'n/a')} "
+              f"over ~{LOOKBACK_YEARS}y")
         time.sleep(0.3)  # be polite to Yahoo Finance
 
     print("\n" + "=" * 70)
@@ -161,6 +186,25 @@ def main():
         print("\nPer-stock breakdown:")
         for t, c in sorted(valid.items(), key=lambda x: -x[1]):
             print(f"  {t:12s} {c} crossovers")
+    else:
+        print("No valid data.")
+
+    print("\n" + "=" * 70)
+    print("STRATEGY 1 — TRUE ENTRY FREQUENCY (matches live logic exactly:")
+    print("weekly ST(10,3) bullish AND daily ST(10,3) bullish AND fresh")
+    print("daily ST(2,1) crossover, all on the same day)")
+    print("=" * 70)
+    valid_true = {k: v for k, v in s1_true_entry_counts.items() if v is not None}
+    if valid_true:
+        total_true = sum(valid_true.values())
+        print(f"Total true entry-eligible days across pool: {total_true} "
+              f"over ~{LOOKBACK_YEARS} years")
+        print(f"Aggregate: ~{total_true/(LOOKBACK_YEARS*12):.1f} true entry "
+              f"events/month across the whole current pool (vs. the raw "
+              f"crossover count above, which ignores the trend filters)")
+        print("\nPer-stock breakdown:")
+        for t, c in sorted(valid_true.items(), key=lambda x: -x[1]):
+            print(f"  {t:12s} {c} true entry days")
     else:
         print("No valid data.")
 

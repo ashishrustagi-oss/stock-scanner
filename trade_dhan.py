@@ -447,6 +447,7 @@ def run_trade_cycle() -> None:
 
         candidates = [s for s in strat["stocks"] if s not in open_positions]
         other_strat = "combo" if strat_key == "elite" else "elite"
+        _error_counts: dict[str, int] = {}
 
         for symbol in candidates:
             if len(open_positions) >= MAX_POSITIONS:
@@ -456,12 +457,18 @@ def run_trade_cycle() -> None:
 
             ltp = _dhan_data.get_ltp(symbol)
             if ltp is None:
+                _error_counts["no_ltp"] = _error_counts.get("no_ltp", 0) + 1
                 continue
 
             st = check_supertrend_conditions(symbol)
-            if st.get("error") or not st.get("eligible_for_entry"):
+            if st.get("error"):
+                _error_counts[st["error"]] = _error_counts.get(st["error"], 0) + 1
+                continue
+            if not st.get("eligible_for_entry"):
+                _error_counts["not_eligible"] = _error_counts.get("not_eligible", 0) + 1
                 continue
             if not st.get("daily_2_1_cross_up"):
+                _error_counts["no_cross_up"] = _error_counts.get("no_cross_up", 0) + 1
                 continue
 
             qty = compute_qty(ltp)
@@ -480,6 +487,9 @@ def run_trade_cycle() -> None:
             except Exception as exc:
                 logger.error("trade_dhan: BUY failed %s: %s", symbol, exc)
             time.sleep(0.5)
+
+        if _error_counts:
+            logger.info("trade_dhan: %s scan skip reasons: %s", strat_key, _error_counts)
 
         state[strat_key] = open_positions
 

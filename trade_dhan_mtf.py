@@ -400,6 +400,7 @@ def run_trade_cycle() -> None:
         return
 
     candidates = [s for s in qualified if s not in positions]
+    _error_counts: dict[str, int] = {}
 
     for symbol in candidates:
         if len(positions) >= MAX_POSITIONS:
@@ -407,20 +408,24 @@ def run_trade_cycle() -> None:
 
         ltp = _dhan_data.get_ltp(symbol)
         if ltp is None:
+            _error_counts["no_ltp"] = _error_counts.get("no_ltp", 0) + 1
             continue
 
         cond = check_mtf_conditions(symbol)
 
         if cond.get("error"):
             logger.debug("trade_mtf: %s error: %s", symbol, cond["error"])
+            _error_counts[cond["error"]] = _error_counts.get(cond["error"], 0) + 1
             continue
 
         if not cond.get("eligible_for_entry"):
             logger.debug("trade_mtf: %s failed higher TF filters", symbol)
+            _error_counts["not_eligible"] = _error_counts.get("not_eligible", 0) + 1
             continue
 
         if not cond.get("intra_10_3_cross_up"):
             logger.debug("trade_mtf: %s no 15-min ST(10,3) crossover", symbol)
+            _error_counts["no_cross_up"] = _error_counts.get("no_cross_up", 0) + 1
             continue
 
         # All 5 layers passed — place entry
@@ -441,6 +446,9 @@ def run_trade_cycle() -> None:
             logger.error("trade_mtf: BUY failed %s: %s", symbol, exc)
 
         time.sleep(0.5)
+
+    if _error_counts:
+        logger.info("trade_mtf: scan skip reasons: %s", _error_counts)
 
     _save_state(positions)
     _cycle_summary(positions)
