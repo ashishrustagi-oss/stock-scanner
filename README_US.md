@@ -104,17 +104,44 @@ cross-checked against Wikipedia's current list on each update but isn't a
 perfect record of every historical change. Not a concern for 1996-2001 (the
 maintainer's own flagged weak spot) since our range starts 2008.
 
-### Price data coverage (open item)
+### Price data coverage (RESOLVED — baseline established)
 
 Point-in-time membership tells us *which* tickers should be in the backtest;
 it doesn't guarantee yfinance actually has usable price data for all of
-them — delisted/bankrupt tickers are exactly the ones most likely to be
-missing from a free source, and also the ones most important not to silently
-drop (that's where survivorship bias hides). `diagnostics/sp500_coverage_probe.py`
-checks this explicitly and writes a gap report to
-`cache/sp500_coverage_report.json` — **run this before trusting any backtest
-results**, and document whatever gaps it finds rather than treating the
-pipeline as complete.
+them. `diagnostics/sp500_coverage_probe.py` checks this explicitly.
+
+**Confirmed result (2008-01-01 to 2026-07-04, 892 unique tickers ever in the
+index during that window):**
+
+| Metric | Count | % |
+|---|---|---|
+| Fully covered | 640 | 71.7% |
+| Partial coverage (some gap at start/end) | 57 | 6.4% |
+| No data at all | 195 | 21.9% |
+
+This is after two rounds of fixes: (1) correcting a ticker-format bug where
+dotted tickers like `BRK.B` weren't being converted to yfinance's `BRK-B`
+format, (2) an isolated retry pass ruling out Yahoo rate-limiting as the
+cause of batch failures, and (3) a `known_ticker_renames.py` mapping
+recovering same-company/new-ticker cases (Anthem→Elevance, Cabot Oil→
+Coterra, CenturyLink→Lumen, Discovery/WarnerMedia→WBD, ViacomCBS→Paramount).
+Combined, these recovered only ~10 tickers — meaning **the vast majority of
+the 195 "no data" tickers are genuinely unavailable**, not artifacts of a
+fixable bug.
+
+**Decision: accept 71.7% as the documented baseline rather than chase
+further manual ticker-rename research.** The remaining gap is dominated by
+outright bankruptcies (Lehman, WaMu) and acquisitions with no successor
+ticker (Xilinx→AMD, Cerner→Oracle, Twitter→Musk, Activision→Microsoft) —
+a long tail that would cost disproportionate manual effort to recover
+relative to the project's cost/time-efficiency goals.
+
+**Backtest caveat this creates (must be stated in any results write-up, not
+just here):** because bankruptcies/failures are over-represented in the
+missing 21.9%, the backtest will still modestly overstate returns relative
+to what a real portfolio would have experienced — this is the residual
+survivorship bias a free data pipeline cannot fully eliminate. Treat any
+backtest CAGR/Sharpe figures as an upper bound, not an exact prediction.
 
 ### Point-in-time fundamentals
 
@@ -131,7 +158,8 @@ layered onto the longer price-only backtest. Decision pending.
 | Component | Status |
 |---|---|
 | `sp500_point_in_time.py` | Built, tested against live data |
-| `diagnostics/sp500_coverage_probe.py` | Built, **not yet run** (needs real internet, won't run in a network-restricted sandbox) |
+| `diagnostics/sp500_coverage_probe.py` | Built and run — 71.7% ticker coverage confirmed as documented baseline (see Backtest Design above) |
+| `known_ticker_renames.py` | Built — 9 confirmed renames mapped, 3 candidate 2025-2026 renames flagged for manual verification |
 | `config.py` additions | Done (`SP500_HISTORICAL_URL`, `SP500_CHANGES_SINCE_URL`, `SP500_TIMELINE_CACHE_PATH`) |
 | Extended `fundamentals.py` (PEG, EV/EBITDA, FCF, margin trend) | Not started |
 | `scoring_us.py` (composite score) | Not started |

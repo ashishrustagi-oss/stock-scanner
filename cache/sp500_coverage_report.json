@@ -1,0 +1,2182 @@
+{
+  "generated_at": "2026-07-04T19:03:47.051443",
+  "backtest_window": [
+    "2008-01-01",
+    "2026-07-04"
+  ],
+  "total_tickers_checked": 892,
+  "fully_covered": 640,
+  "partial_coverage_count": 57,
+  "no_data_count": 195,
+  "coverage_pct": 71.7,
+  "no_data_tickers": [
+    {
+      "ticker": "AABA",
+      "expected_window": [
+        "2008-01-02",
+        "2017-06-16"
+      ]
+    },
+    {
+      "ticker": "ABC",
+      "expected_window": [
+        "2008-01-02",
+        "2023-08-25"
+      ]
+    },
+    {
+      "ticker": "ABKFQ",
+      "expected_window": [
+        "2008-01-02",
+        "2008-06-10"
+      ]
+    },
+    {
+      "ticker": "ABMD",
+      "expected_window": [
+        "2018-05-31",
+        "2022-12-19"
+      ]
+    },
+    {
+      "ticker": "ACAS",
+      "expected_window": [
+        "2008-01-02",
+        "2009-03-02"
+      ]
+    },
+    {
+      "ticker": "ACS",
+      "expected_window": [
+        "2008-01-02",
+        "2010-02-02"
+      ]
+    },
+    {
+      "ticker": "ADS",
+      "expected_window": [
+        "2013-12-23",
+        "2020-05-22"
+      ]
+    },
+    {
+      "ticker": "AGN",
+      "expected_window": [
+        "2008-01-02",
+        "2020-04-06"
+      ]
+    },
+    {
+      "ticker": "AKS",
+      "expected_window": [
+        "2008-07-01",
+        "2011-12-14"
+      ]
+    },
+    {
+      "ticker": "ALTR",
+      "expected_window": [
+        "2008-01-02",
+        "2015-12-21"
+      ]
+    },
+    {
+      "ticker": "ALXN",
+      "expected_window": [
+        "2012-05-25",
+        "2021-06-04"
+      ]
+    },
+    {
+      "ticker": "ANRZQ",
+      "expected_window": [
+        "2011-06-02",
+        "2012-10-01"
+      ]
+    },
+    {
+      "ticker": "ANSS",
+      "expected_window": [
+        "2017-06-19",
+        "2025-07-09"
+      ]
+    },
+    {
+      "ticker": "APOL",
+      "expected_window": [
+        "2008-01-02",
+        "2013-06-27"
+      ]
+    },
+    {
+      "ticker": "ARG",
+      "expected_window": [
+        "2009-09-09",
+        "2016-05-20"
+      ]
+    },
+    {
+      "ticker": "ARNC",
+      "expected_window": [
+        "2008-01-02",
+        "2020-04-03"
+      ]
+    },
+    {
+      "ticker": "ATGE",
+      "expected_window": [
+        "2009-06-09",
+        "2012-09-25"
+      ]
+    },
+    {
+      "ticker": "ATVI",
+      "expected_window": [
+        "2015-08-31",
+        "2023-10-02"
+      ]
+    },
+    {
+      "ticker": "AVP",
+      "expected_window": [
+        "2008-01-02",
+        "2015-03-19"
+      ]
+    },
+    {
+      "ticker": "AW",
+      "expected_window": [
+        "2008-01-02",
+        "2008-12-04"
+      ]
+    },
+    {
+      "ticker": "AYE",
+      "expected_window": [
+        "2008-01-02",
+        "2011-02-23"
+      ]
+    },
+    {
+      "ticker": "BCR",
+      "expected_window": [
+        "2008-01-02",
+        "2017-12-27"
+      ]
+    },
+    {
+      "ticker": "BDK",
+      "expected_window": [
+        "2008-01-02",
+        "2010-03-11"
+      ]
+    },
+    {
+      "ticker": "BHGE",
+      "expected_window": [
+        "2008-01-02",
+        "2019-10-03"
+      ]
+    },
+    {
+      "ticker": "BIG",
+      "expected_window": [
+        "2008-01-02",
+        "2013-02-06"
+      ]
+    },
+    {
+      "ticker": "BJS",
+      "expected_window": [
+        "2008-01-02",
+        "2010-04-21"
+      ]
+    },
+    {
+      "ticker": "BLL",
+      "expected_window": [
+        "2008-01-02",
+        "2022-04-11"
+      ]
+    },
+    {
+      "ticker": "BNI",
+      "expected_window": [
+        "2008-01-02",
+        "2010-02-10"
+      ]
+    },
+    {
+      "ticker": "BRCM",
+      "expected_window": [
+        "2008-01-02",
+        "2016-01-26"
+      ]
+    },
+    {
+      "ticker": "BRL",
+      "expected_window": [
+        "2008-01-02",
+        "2008-12-22"
+      ]
+    },
+    {
+      "ticker": "BSC",
+      "expected_window": [
+        "2008-01-02",
+        "2008-05-29"
+      ]
+    },
+    {
+      "ticker": "BTUUQ",
+      "expected_window": [
+        "2008-01-02",
+        "2014-09-19"
+      ]
+    },
+    {
+      "ticker": "BXLT",
+      "expected_window": [
+        "2015-07-01",
+        "2016-06-01"
+      ]
+    },
+    {
+      "ticker": "CBH",
+      "expected_window": [
+        "2008-01-02",
+        "2008-03-18"
+      ]
+    },
+    {
+      "ticker": "CBS",
+      "expected_window": [
+        "2008-01-02",
+        "2019-11-21"
+      ]
+    },
+    {
+      "ticker": "CCTYQ",
+      "expected_window": [
+        "2008-01-02",
+        "2008-03-18"
+      ]
+    },
+    {
+      "ticker": "CDAY",
+      "expected_window": [
+        "2021-09-20",
+        "2023-10-18"
+      ]
+    },
+    {
+      "ticker": "CELG",
+      "expected_window": [
+        "2008-01-02",
+        "2019-11-05"
+      ]
+    },
+    {
+      "ticker": "CEPH",
+      "expected_window": [
+        "2008-11-17",
+        "2011-10-11"
+      ]
+    },
+    {
+      "ticker": "CERN",
+      "expected_window": [
+        "2010-04-30",
+        "2022-05-10"
+      ]
+    },
+    {
+      "ticker": "CFN",
+      "expected_window": [
+        "2009-09-01",
+        "2015-03-13"
+      ]
+    },
+    {
+      "ticker": "CHK",
+      "expected_window": [
+        "2008-01-02",
+        "2018-03-16"
+      ]
+    },
+    {
+      "ticker": "CITGQ",
+      "expected_window": [
+        "2008-01-02",
+        "2009-07-17"
+      ]
+    },
+    {
+      "ticker": "CMA",
+      "expected_window": [
+        "2008-01-02",
+        "2024-05-08"
+      ]
+    },
+    {
+      "ticker": "CMCSK",
+      "expected_window": [
+        "2015-09-21",
+        "2015-12-09"
+      ]
+    },
+    {
+      "ticker": "COV",
+      "expected_window": [
+        "2008-01-02",
+        "2015-01-15"
+      ]
+    },
+    {
+      "ticker": "CPGX",
+      "expected_window": [
+        "2015-07-02",
+        "2016-06-27"
+      ]
+    },
+    {
+      "ticker": "CTLT",
+      "expected_window": [
+        "2020-09-21",
+        "2024-11-26"
+      ]
+    },
+    {
+      "ticker": "CTX",
+      "expected_window": [
+        "2008-01-02",
+        "2009-08-18"
+      ]
+    },
+    {
+      "ticker": "CTXS",
+      "expected_window": [
+        "2008-01-02",
+        "2022-09-19"
+      ]
+    },
+    {
+      "ticker": "CVC",
+      "expected_window": [
+        "2010-12-20",
+        "2016-06-20"
+      ]
+    },
+    {
+      "ticker": "CVH",
+      "expected_window": [
+        "2008-01-02",
+        "2013-05-02"
+      ]
+    },
+    {
+      "ticker": "CXO",
+      "expected_window": [
+        "2016-02-22",
+        "2021-01-07"
+      ]
+    },
+    {
+      "ticker": "DAY",
+      "expected_window": [
+        "2024-02-01",
+        "2026-01-14"
+      ]
+    },
+    {
+      "ticker": "DF",
+      "expected_window": [
+        "2008-01-02",
+        "2013-05-17"
+      ]
+    },
+    {
+      "ticker": "DFS",
+      "expected_window": [
+        "2008-01-02",
+        "2025-03-24"
+      ]
+    },
+    {
+      "ticker": "DISH",
+      "expected_window": [
+        "2017-03-13",
+        "2023-06-07"
+      ]
+    },
+    {
+      "ticker": "DNB",
+      "expected_window": [
+        "2008-12-02",
+        "2017-04-04"
+      ]
+    },
+    {
+      "ticker": "DNR",
+      "expected_window": [
+        "2009-04-02",
+        "2015-03-19"
+      ]
+    },
+    {
+      "ticker": "DO",
+      "expected_window": [
+        "2009-02-26",
+        "2016-09-28"
+      ]
+    },
+    {
+      "ticker": "DRE",
+      "expected_window": [
+        "2017-07-26",
+        "2022-09-19"
+      ]
+    },
+    {
+      "ticker": "DTV",
+      "expected_window": [
+        "2008-01-02",
+        "2015-07-23"
+      ]
+    },
+    {
+      "ticker": "DWDP",
+      "expected_window": [
+        "2017-09-01",
+        "2019-06-01"
+      ]
+    },
+    {
+      "ticker": "EDS",
+      "expected_window": [
+        "2008-01-02",
+        "2008-08-25"
+      ]
+    },
+    {
+      "ticker": "EKDKQ",
+      "expected_window": [
+        "2008-01-02",
+        "2010-12-17"
+      ]
+    },
+    {
+      "ticker": "ENDP",
+      "expected_window": [
+        "2015-01-27",
+        "2017-03-01"
+      ]
+    },
+    {
+      "ticker": "ESV",
+      "expected_window": [
+        "2008-01-02",
+        "2016-03-29"
+      ]
+    },
+    {
+      "ticker": "ETFC",
+      "expected_window": [
+        "2008-01-02",
+        "2020-09-21"
+      ]
+    },
+    {
+      "ticker": "FBHS",
+      "expected_window": [
+        "2016-06-24",
+        "2022-11-08"
+      ],
+      "note": "mapped to FBIN in KNOWN_TICKER_RENAMES but still no data \u2014 verify manually"
+    },
+    {
+      "ticker": "FDO",
+      "expected_window": [
+        "2008-01-02",
+        "2015-07-06"
+      ]
+    },
+    {
+      "ticker": "FI",
+      "expected_window": [
+        "2023-06-07",
+        "2025-11-04"
+      ]
+    },
+    {
+      "ticker": "FII",
+      "expected_window": [
+        "2008-01-02",
+        "2012-12-28"
+      ]
+    },
+    {
+      "ticker": "FL",
+      "expected_window": [
+        "2016-04-04",
+        "2019-08-08"
+      ]
+    },
+    {
+      "ticker": "FLIR",
+      "expected_window": [
+        "2009-01-02",
+        "2021-04-20"
+      ]
+    },
+    {
+      "ticker": "FLT",
+      "expected_window": [
+        "2018-06-20",
+        "2024-03-18"
+      ]
+    },
+    {
+      "ticker": "FRC",
+      "expected_window": [
+        "2019-01-02",
+        "2023-03-20"
+      ]
+    },
+    {
+      "ticker": "FRX",
+      "expected_window": [
+        "2008-01-02",
+        "2014-06-24"
+      ]
+    },
+    {
+      "ticker": "FTR",
+      "expected_window": [
+        "2008-01-02",
+        "2017-03-17"
+      ]
+    },
+    {
+      "ticker": "GAS",
+      "expected_window": [
+        "2008-01-02",
+        "2016-06-27"
+      ]
+    },
+    {
+      "ticker": "GGP",
+      "expected_window": [
+        "2008-01-02",
+        "2018-08-20"
+      ]
+    },
+    {
+      "ticker": "GMCR",
+      "expected_window": [
+        "2014-03-24",
+        "2016-02-26"
+      ]
+    },
+    {
+      "ticker": "GPS",
+      "expected_window": [
+        "2008-01-02",
+        "2022-01-10"
+      ]
+    },
+    {
+      "ticker": "HBI",
+      "expected_window": [
+        "2015-03-23",
+        "2021-12-14"
+      ]
+    },
+    {
+      "ticker": "HCBK",
+      "expected_window": [
+        "2008-01-02",
+        "2015-10-28"
+      ]
+    },
+    {
+      "ticker": "HCP",
+      "expected_window": [
+        "2008-03-31",
+        "2019-10-18"
+      ]
+    },
+    {
+      "ticker": "HES",
+      "expected_window": [
+        "2008-01-02",
+        "2025-07-18"
+      ]
+    },
+    {
+      "ticker": "HFC",
+      "expected_window": [
+        "2018-06-18",
+        "2021-05-14"
+      ],
+      "note": "mapped to DINO in KNOWN_TICKER_RENAMES but still no data \u2014 verify manually"
+    },
+    {
+      "ticker": "HNZ",
+      "expected_window": [
+        "2008-01-02",
+        "2013-06-06"
+      ]
+    },
+    {
+      "ticker": "HOLX",
+      "expected_window": [
+        "2016-03-30",
+        "2026-03-23"
+      ]
+    },
+    {
+      "ticker": "HRS",
+      "expected_window": [
+        "2008-09-22",
+        "2019-04-02"
+      ]
+    },
+    {
+      "ticker": "HSH",
+      "expected_window": [
+        "2008-01-02",
+        "2012-06-25"
+      ]
+    },
+    {
+      "ticker": "HSP",
+      "expected_window": [
+        "2008-01-02",
+        "2015-09-01"
+      ]
+    },
+    {
+      "ticker": "IGT",
+      "expected_window": [
+        "2008-01-02",
+        "2014-06-19"
+      ]
+    },
+    {
+      "ticker": "IPG",
+      "expected_window": [
+        "2008-01-02",
+        "2025-11-11"
+      ]
+    },
+    {
+      "ticker": "JCP",
+      "expected_window": [
+        "2008-01-02",
+        "2013-11-27"
+      ]
+    },
+    {
+      "ticker": "JEC",
+      "expected_window": [
+        "2008-01-02",
+        "2019-12-09"
+      ]
+    },
+    {
+      "ticker": "JNPR",
+      "expected_window": [
+        "2008-01-02",
+        "2025-05-19"
+      ]
+    },
+    {
+      "ticker": "JNS",
+      "expected_window": [
+        "2008-01-02",
+        "2011-11-18"
+      ]
+    },
+    {
+      "ticker": "JNY",
+      "expected_window": [
+        "2008-01-02",
+        "2009-03-02"
+      ]
+    },
+    {
+      "ticker": "JOY",
+      "expected_window": [
+        "2011-02-28",
+        "2015-10-05"
+      ]
+    },
+    {
+      "ticker": "JWN",
+      "expected_window": [
+        "2008-01-02",
+        "2020-05-22"
+      ]
+    },
+    {
+      "ticker": "K",
+      "expected_window": [
+        "2008-01-02",
+        "2025-11-28"
+      ]
+    },
+    {
+      "ticker": "KATE",
+      "expected_window": [
+        "2008-01-02",
+        "2008-11-28"
+      ]
+    },
+    {
+      "ticker": "KORS",
+      "expected_window": [
+        "2013-11-13",
+        "2018-09-18"
+      ]
+    },
+    {
+      "ticker": "KRFT",
+      "expected_window": [
+        "2012-10-02",
+        "2015-07-02"
+      ]
+    },
+    {
+      "ticker": "KSU",
+      "expected_window": [
+        "2013-05-24",
+        "2021-10-04"
+      ]
+    },
+    {
+      "ticker": "LEHMQ",
+      "expected_window": [
+        "2008-01-02",
+        "2008-09-16"
+      ]
+    },
+    {
+      "ticker": "LLL",
+      "expected_window": [
+        "2008-01-02",
+        "2019-06-07"
+      ]
+    },
+    {
+      "ticker": "LLTC",
+      "expected_window": [
+        "2008-01-02",
+        "2017-03-10"
+      ]
+    },
+    {
+      "ticker": "LM",
+      "expected_window": [
+        "2008-01-02",
+        "2016-11-29"
+      ]
+    },
+    {
+      "ticker": "LO",
+      "expected_window": [
+        "2008-06-11",
+        "2015-06-11"
+      ]
+    },
+    {
+      "ticker": "LSI",
+      "expected_window": [
+        "2008-01-02",
+        "2014-05-06"
+      ]
+    },
+    {
+      "ticker": "LVLT",
+      "expected_window": [
+        "2014-11-05",
+        "2017-10-10"
+      ]
+    },
+    {
+      "ticker": "LXK",
+      "expected_window": [
+        "2008-01-02",
+        "2012-09-25"
+      ]
+    },
+    {
+      "ticker": "MDP",
+      "expected_window": [
+        "2008-01-02",
+        "2010-12-31"
+      ]
+    },
+    {
+      "ticker": "MFE",
+      "expected_window": [
+        "2008-12-23",
+        "2011-02-28"
+      ]
+    },
+    {
+      "ticker": "MIL",
+      "expected_window": [
+        "2008-01-02",
+        "2010-07-12"
+      ]
+    },
+    {
+      "ticker": "MJN",
+      "expected_window": [
+        "2009-12-21",
+        "2017-06-07"
+      ]
+    },
+    {
+      "ticker": "MMC",
+      "expected_window": [
+        "2008-01-02",
+        "2025-12-22"
+      ]
+    },
+    {
+      "ticker": "MNK",
+      "expected_window": [
+        "2014-08-19",
+        "2017-07-25"
+      ]
+    },
+    {
+      "ticker": "MON",
+      "expected_window": [
+        "2008-01-02",
+        "2018-06-06"
+      ]
+    },
+    {
+      "ticker": "MRO",
+      "expected_window": [
+        "2008-01-02",
+        "2024-10-01"
+      ]
+    },
+    {
+      "ticker": "MTLQQ",
+      "expected_window": [
+        "2008-01-02",
+        "2009-05-29"
+      ]
+    },
+    {
+      "ticker": "MWV",
+      "expected_window": [
+        "2008-01-02",
+        "2015-07-01"
+      ]
+    },
+    {
+      "ticker": "MWW",
+      "expected_window": [
+        "2008-01-02",
+        "2011-12-14"
+      ]
+    },
+    {
+      "ticker": "MXIM",
+      "expected_window": [
+        "2018-12-03",
+        "2021-08-03"
+      ]
+    },
+    {
+      "ticker": "MYL",
+      "expected_window": [
+        "2008-01-02",
+        "2020-10-12"
+      ]
+    },
+    {
+      "ticker": "NBL",
+      "expected_window": [
+        "2008-01-02",
+        "2020-10-07"
+      ]
+    },
+    {
+      "ticker": "NLOK",
+      "expected_window": [
+        "2019-11-05",
+        "2022-11-01"
+      ]
+    },
+    {
+      "ticker": "NLSN",
+      "expected_window": [
+        "2013-07-09",
+        "2022-10-03"
+      ]
+    },
+    {
+      "ticker": "NOVL",
+      "expected_window": [
+        "2008-01-02",
+        "2011-04-25"
+      ]
+    },
+    {
+      "ticker": "NVLS",
+      "expected_window": [
+        "2008-01-02",
+        "2012-06-04"
+      ]
+    },
+    {
+      "ticker": "NYX",
+      "expected_window": [
+        "2008-01-02",
+        "2013-11-07"
+      ]
+    },
+    {
+      "ticker": "ODP",
+      "expected_window": [
+        "2008-01-02",
+        "2010-12-17"
+      ]
+    },
+    {
+      "ticker": "OMX",
+      "expected_window": [
+        "2008-01-02",
+        "2008-06-18"
+      ]
+    },
+    {
+      "ticker": "PARA",
+      "expected_window": [
+        "2022-02-17",
+        "2025-07-23"
+      ]
+    },
+    {
+      "ticker": "PBCT",
+      "expected_window": [
+        "2008-11-13",
+        "2022-03-02"
+      ]
+    },
+    {
+      "ticker": "PCP",
+      "expected_window": [
+        "2008-01-02",
+        "2016-01-26"
+      ]
+    },
+    {
+      "ticker": "PDCO",
+      "expected_window": [
+        "2008-01-02",
+        "2018-03-16"
+      ]
+    },
+    {
+      "ticker": "PEAK",
+      "expected_window": [
+        "2019-11-05",
+        "2024-02-01"
+      ]
+    },
+    {
+      "ticker": "PETM",
+      "expected_window": [
+        "2012-10-05",
+        "2015-03-11"
+      ]
+    },
+    {
+      "ticker": "PGN",
+      "expected_window": [
+        "2008-01-02",
+        "2012-06-29"
+      ]
+    },
+    {
+      "ticker": "PKI",
+      "expected_window": [
+        "2008-01-02",
+        "2023-05-04"
+      ]
+    },
+    {
+      "ticker": "PLL",
+      "expected_window": [
+        "2008-01-02",
+        "2015-08-25"
+      ]
+    },
+    {
+      "ticker": "PX",
+      "expected_window": [
+        "2008-01-02",
+        "2018-10-25"
+      ]
+    },
+    {
+      "ticker": "PXD",
+      "expected_window": [
+        "2008-09-24",
+        "2024-04-03"
+      ]
+    },
+    {
+      "ticker": "QEP",
+      "expected_window": [
+        "2010-07-01",
+        "2015-06-30"
+      ]
+    },
+    {
+      "ticker": "QLGC",
+      "expected_window": [
+        "2008-01-02",
+        "2011-01-12"
+      ]
+    },
+    {
+      "ticker": "RAI",
+      "expected_window": [
+        "2008-01-02",
+        "2017-07-20"
+      ]
+    },
+    {
+      "ticker": "RDC",
+      "expected_window": [
+        "2008-01-02",
+        "2014-08-13"
+      ]
+    },
+    {
+      "ticker": "RE",
+      "expected_window": [
+        "2017-06-19",
+        "2023-06-20"
+      ]
+    },
+    {
+      "ticker": "RHT",
+      "expected_window": [
+        "2009-07-27",
+        "2019-07-01"
+      ]
+    },
+    {
+      "ticker": "ROH",
+      "expected_window": [
+        "2008-01-02",
+        "2009-04-01"
+      ]
+    },
+    {
+      "ticker": "RRD",
+      "expected_window": [
+        "2008-01-02",
+        "2012-12-07"
+      ]
+    },
+    {
+      "ticker": "RSHCQ",
+      "expected_window": [
+        "2008-01-02",
+        "2011-06-30"
+      ]
+    },
+    {
+      "ticker": "RTN",
+      "expected_window": [
+        "2008-01-02",
+        "2020-04-03"
+      ]
+    },
+    {
+      "ticker": "SEE",
+      "expected_window": [
+        "2008-01-02",
+        "2023-10-02"
+      ]
+    },
+    {
+      "ticker": "SIAL",
+      "expected_window": [
+        "2008-01-02",
+        "2015-11-17"
+      ]
+    },
+    {
+      "ticker": "SIVB",
+      "expected_window": [
+        "2018-03-19",
+        "2023-01-04"
+      ]
+    },
+    {
+      "ticker": "SNI",
+      "expected_window": [
+        "2008-07-01",
+        "2018-02-28"
+      ]
+    },
+    {
+      "ticker": "SOV",
+      "expected_window": [
+        "2008-01-02",
+        "2009-01-28"
+      ]
+    },
+    {
+      "ticker": "SRCL",
+      "expected_window": [
+        "2008-11-19",
+        "2018-11-29"
+      ]
+    },
+    {
+      "ticker": "STJ",
+      "expected_window": [
+        "2008-01-02",
+        "2017-01-03"
+      ]
+    },
+    {
+      "ticker": "STR",
+      "expected_window": [
+        "2008-01-02",
+        "2010-06-29"
+      ]
+    },
+    {
+      "ticker": "SUNEQ",
+      "expected_window": [
+        "2008-01-02",
+        "2011-12-14"
+      ]
+    },
+    {
+      "ticker": "SWN",
+      "expected_window": [
+        "2008-06-06",
+        "2017-03-30"
+      ]
+    },
+    {
+      "ticker": "SWY",
+      "expected_window": [
+        "2008-01-02",
+        "2015-01-15"
+      ]
+    },
+    {
+      "ticker": "SYMC",
+      "expected_window": [
+        "2008-01-02",
+        "2019-10-18"
+      ]
+    },
+    {
+      "ticker": "TGNA",
+      "expected_window": [
+        "2008-01-02",
+        "2017-05-23"
+      ]
+    },
+    {
+      "ticker": "TIF",
+      "expected_window": [
+        "2008-01-02",
+        "2020-12-21"
+      ]
+    },
+    {
+      "ticker": "TMK",
+      "expected_window": [
+        "2008-01-02",
+        "2019-07-15"
+      ]
+    },
+    {
+      "ticker": "TSS",
+      "expected_window": [
+        "2008-01-02",
+        "2019-08-09"
+      ]
+    },
+    {
+      "ticker": "TWC",
+      "expected_window": [
+        "2009-03-30",
+        "2016-05-17"
+      ]
+    },
+    {
+      "ticker": "TWTR",
+      "expected_window": [
+        "2018-06-07",
+        "2022-10-12"
+      ]
+    },
+    {
+      "ticker": "UTX",
+      "expected_window": [
+        "2008-01-02",
+        "2020-03-03"
+      ]
+    },
+    {
+      "ticker": "VAR",
+      "expected_window": [
+        "2008-01-02",
+        "2021-03-22"
+      ]
+    },
+    {
+      "ticker": "VIAB",
+      "expected_window": [
+        "2008-01-02",
+        "2019-11-21"
+      ]
+    },
+    {
+      "ticker": "VIAC",
+      "expected_window": [
+        "2019-12-05",
+        "2022-02-15"
+      ],
+      "note": "mapped to PARA in KNOWN_TICKER_RENAMES but still no data \u2014 verify manually"
+    },
+    {
+      "ticker": "WAMUQ",
+      "expected_window": [
+        "2008-01-02",
+        "2008-09-26"
+      ]
+    },
+    {
+      "ticker": "WBA",
+      "expected_window": [
+        "2008-01-02",
+        "2025-08-08"
+      ]
+    },
+    {
+      "ticker": "WCG",
+      "expected_window": [
+        "2018-09-17",
+        "2019-12-23"
+      ]
+    },
+    {
+      "ticker": "WFM",
+      "expected_window": [
+        "2008-01-02",
+        "2017-08-17"
+      ]
+    },
+    {
+      "ticker": "WFT",
+      "expected_window": [
+        "2008-01-02",
+        "2009-02-25"
+      ]
+    },
+    {
+      "ticker": "WIN",
+      "expected_window": [
+        "2008-01-02",
+        "2015-03-31"
+      ]
+    },
+    {
+      "ticker": "WLTW",
+      "expected_window": [
+        "2016-01-05",
+        "2021-12-20"
+      ]
+    },
+    {
+      "ticker": "WPX",
+      "expected_window": [
+        "2012-01-03",
+        "2014-03-12"
+      ]
+    },
+    {
+      "ticker": "WRK",
+      "expected_window": [
+        "2015-07-02",
+        "2024-06-24"
+      ]
+    },
+    {
+      "ticker": "WWY",
+      "expected_window": [
+        "2008-01-02",
+        "2008-10-06"
+      ]
+    },
+    {
+      "ticker": "WYE",
+      "expected_window": [
+        "2008-01-02",
+        "2009-10-15"
+      ]
+    },
+    {
+      "ticker": "WYND",
+      "expected_window": [
+        "2008-01-02",
+        "2018-05-24"
+      ]
+    },
+    {
+      "ticker": "X",
+      "expected_window": [
+        "2008-01-02",
+        "2014-07-01"
+      ]
+    },
+    {
+      "ticker": "XEC",
+      "expected_window": [
+        "2014-06-20",
+        "2020-01-28"
+      ]
+    },
+    {
+      "ticker": "XL",
+      "expected_window": [
+        "2008-01-02",
+        "2018-09-11"
+      ]
+    },
+    {
+      "ticker": "XLNX",
+      "expected_window": [
+        "2008-01-02",
+        "2022-02-02"
+      ]
+    },
+    {
+      "ticker": "XTO",
+      "expected_window": [
+        "2008-01-02",
+        "2010-06-21"
+      ]
+    }
+  ],
+  "partial_coverage_tickers": [
+    {
+      "ticker": "ABI",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2008-01-02",
+        "2008-11-20"
+      ],
+      "actual_window": [
+        "2025-06-26",
+        "2026-07-02"
+      ],
+      "gap_at_start_days": 6385,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "ADT",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2012-10-02",
+        "2016-04-28"
+      ],
+      "actual_window": [
+        "2018-01-19",
+        "2026-07-02"
+      ],
+      "gap_at_start_days": 1935,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "APC",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2008-01-02",
+        "2019-08-08"
+      ],
+      "actual_window": [
+        "2026-02-12",
+        "2026-07-02"
+      ],
+      "gap_at_start_days": 6616,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "BEAM",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2008-01-02",
+        "2014-04-22"
+      ],
+      "actual_window": [
+        "2020-02-06",
+        "2026-07-02"
+      ],
+      "gap_at_start_days": 4418,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "BMC",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2008-01-02",
+        "2013-09-09"
+      ],
+      "actual_window": [
+        "2012-06-18",
+        "2022-03-02"
+      ],
+      "gap_at_start_days": 1629,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "BUD",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2008-01-02",
+        "2008-11-17"
+      ],
+      "actual_window": [
+        "2009-07-01",
+        "2026-07-02"
+      ],
+      "gap_at_start_days": 546,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "CA",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2008-01-02",
+        "2018-10-31"
+      ],
+      "actual_window": [
+        "2023-12-13",
+        "2026-05-26"
+      ],
+      "gap_at_start_days": 5824,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "CAM",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2008-01-29",
+        "2016-03-31"
+      ],
+      "actual_window": [
+        "2025-10-06",
+        "2026-07-02"
+      ],
+      "gap_at_start_days": 6460,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "CCE",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2008-01-02",
+        "2016-05-24"
+      ],
+      "actual_window": [
+        "2019-02-27",
+        "2020-04-29"
+      ],
+      "gap_at_start_days": 4074,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "CEG",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2008-01-02",
+        "2026-06-02"
+      ],
+      "actual_window": [
+        "2022-01-19",
+        "2026-07-02"
+      ],
+      "gap_at_start_days": 5131,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "COL",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2008-01-02",
+        "2018-11-15"
+      ],
+      "actual_window": [
+        "2012-08-02",
+        "2020-11-30"
+      ],
+      "gap_at_start_days": 1674,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "DELL",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2008-01-02",
+        "2026-06-02"
+      ],
+      "actual_window": [
+        "2016-08-17",
+        "2026-07-02"
+      ],
+      "gap_at_start_days": 3150,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "DOW",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2008-01-02",
+        "2026-06-02"
+      ],
+      "actual_window": [
+        "2019-03-20",
+        "2026-07-02"
+      ],
+      "gap_at_start_days": 4095,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "DYN",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2008-01-02",
+        "2009-12-17"
+      ],
+      "actual_window": [
+        "2020-09-17",
+        "2026-07-02"
+      ],
+      "gap_at_start_days": 4642,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "EMC",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2008-01-02",
+        "2016-09-06"
+      ],
+      "actual_window": [
+        "2023-05-15",
+        "2026-07-02"
+      ],
+      "gap_at_start_days": 5612,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "EQ",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2008-01-02",
+        "2009-06-30"
+      ],
+      "actual_window": [
+        "2018-10-12",
+        "2026-07-02"
+      ],
+      "gap_at_start_days": 3936,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "FB",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2013-12-23",
+        "2022-06-08"
+      ],
+      "actual_window": [
+        "2025-06-26",
+        "2026-07-02"
+      ],
+      "gap_at_start_days": 4203,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "FOX",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2015-09-21",
+        "2026-06-02"
+      ],
+      "actual_window": [
+        "2019-03-13",
+        "2026-07-02"
+      ],
+      "gap_at_start_days": 1269,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "FOXA",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2008-01-02",
+        "2026-06-02"
+      ],
+      "actual_window": [
+        "2019-03-12",
+        "2026-07-02"
+      ],
+      "gap_at_start_days": 4087,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "HAR",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2008-01-02",
+        "2017-03-10"
+      ],
+      "actual_window": [
+        "2013-01-17",
+        "2022-03-02"
+      ],
+      "gap_at_start_days": 1842,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "HOT",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2008-01-02",
+        "2016-09-16"
+      ],
+      "actual_window": [
+        "2015-01-02",
+        "2017-03-20"
+      ],
+      "gap_at_start_days": 2557,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "HPC",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2008-01-02",
+        "2008-11-13"
+      ],
+      "actual_window": [
+        "2008-06-09",
+        "2017-03-20"
+      ],
+      "gap_at_start_days": 159,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "IAC",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2008-01-02",
+        "2008-08-18"
+      ],
+      "actual_window": [
+        "2020-07-01",
+        "2026-06-26"
+      ],
+      "gap_at_start_days": 4564,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "INFO",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2017-06-02",
+        "2022-02-17"
+      ],
+      "actual_window": [
+        "2024-10-10",
+        "2026-07-02"
+      ],
+      "gap_at_start_days": 2687,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "IR",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2008-01-02",
+        "2026-06-02"
+      ],
+      "actual_window": [
+        "2017-05-12",
+        "2026-07-02"
+      ],
+      "gap_at_start_days": 3418,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "JAVA",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2008-01-02",
+        "2010-01-21"
+      ],
+      "actual_window": [
+        "2021-10-05",
+        "2026-07-02"
+      ],
+      "gap_at_start_days": 5025,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "KG",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2008-01-02",
+        "2010-12-17"
+      ],
+      "actual_window": [
+        "2008-05-06",
+        "2026-07-02"
+      ],
+      "gap_at_start_days": 125,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "LB",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2008-01-02",
+        "2021-07-21"
+      ],
+      "actual_window": [
+        "2024-06-28",
+        "2026-07-02"
+      ],
+      "gap_at_start_days": 6022,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "LIFE",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2008-11-24",
+        "2014-01-22"
+      ],
+      "actual_window": [
+        "2026-01-29",
+        "2026-07-02"
+      ],
+      "gap_at_start_days": 6275,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "MER",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2008-01-02",
+        "2008-12-29"
+      ],
+      "actual_window": [
+        "2025-05-09",
+        "2026-06-26"
+      ],
+      "gap_at_start_days": 6337,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "MHS",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2008-01-02",
+        "2012-03-22"
+      ],
+      "actual_window": [
+        "2020-02-12",
+        "2026-06-26"
+      ],
+      "gap_at_start_days": 4424,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "MI",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2008-01-02",
+        "2011-07-05"
+      ],
+      "actual_window": [
+        "2015-11-25",
+        "2026-07-02"
+      ],
+      "gap_at_start_days": 2884,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "MMI",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2011-01-04",
+        "2012-05-15"
+      ],
+      "actual_window": [
+        "2013-10-31",
+        "2026-07-02"
+      ],
+      "gap_at_start_days": 1031,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "NCC",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2008-01-02",
+        "2008-12-29"
+      ],
+      "actual_window": [
+        "2012-05-03",
+        "2022-03-02"
+      ],
+      "gap_at_start_days": 1583,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "NE",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2008-01-02",
+        "2015-07-15"
+      ],
+      "actual_window": [
+        "2021-06-09",
+        "2026-07-02"
+      ],
+      "gap_at_start_days": 4907,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "NSM",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2008-01-02",
+        "2011-09-21"
+      ],
+      "actual_window": [
+        "2012-03-08",
+        "2018-07-31"
+      ],
+      "gap_at_start_days": 1527,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "PCL",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2008-01-02",
+        "2016-02-16"
+      ],
+      "actual_window": [
+        "2025-08-05",
+        "2026-07-02"
+      ],
+      "gap_at_start_days": 6425,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "POM",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2008-01-02",
+        "2016-03-18"
+      ],
+      "actual_window": [
+        "2025-10-08",
+        "2026-07-02"
+      ],
+      "gap_at_start_days": 6489,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "PTV",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2008-01-02",
+        "2010-11-08"
+      ],
+      "actual_window": [
+        "2010-12-31",
+        "2017-05-31"
+      ],
+      "gap_at_start_days": 1094,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "Q",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2008-01-02",
+        "2026-06-02"
+      ],
+      "actual_window": [
+        "2025-10-27",
+        "2026-07-02"
+      ],
+      "gap_at_start_days": 6508,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "RX",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2008-01-02",
+        "2010-02-23"
+      ],
+      "actual_window": [
+        "2008-11-26",
+        "2018-02-22"
+      ],
+      "gap_at_start_days": 329,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "S",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2008-01-02",
+        "2013-07-02"
+      ],
+      "actual_window": [
+        "2021-06-30",
+        "2026-07-02"
+      ],
+      "gap_at_start_days": 4928,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "SAF",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2008-01-02",
+        "2008-09-22"
+      ],
+      "actual_window": [
+        "2018-08-29",
+        "2021-08-30"
+      ],
+      "gap_at_start_days": 3892,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "SBNY",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2021-12-20",
+        "2023-01-04"
+      ],
+      "actual_window": [
+        "2024-08-15",
+        "2026-07-02"
+      ],
+      "gap_at_start_days": 969,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "SCG",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2009-01-02",
+        "2018-12-24"
+      ],
+      "actual_window": [
+        "2015-07-16",
+        "2018-12-31"
+      ],
+      "gap_at_start_days": 2386,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "SE",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2008-01-02",
+        "2017-02-24"
+      ],
+      "actual_window": [
+        "2017-10-20",
+        "2026-07-02"
+      ],
+      "gap_at_start_days": 3579,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "SGP",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2008-01-02",
+        "2009-10-29"
+      ],
+      "actual_window": [
+        "2026-02-06",
+        "2026-07-02"
+      ],
+      "gap_at_start_days": 6610,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "SHLD",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2008-01-02",
+        "2012-08-23"
+      ],
+      "actual_window": [
+        "2023-09-14",
+        "2026-07-02"
+      ],
+      "gap_at_start_days": 5734,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "SII",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2008-01-02",
+        "2010-08-19"
+      ],
+      "actual_window": [
+        "2010-02-22",
+        "2026-07-02"
+      ],
+      "gap_at_start_days": 782,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "SNDK",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2008-01-02",
+        "2026-06-02"
+      ],
+      "actual_window": [
+        "2025-02-13",
+        "2026-07-02"
+      ],
+      "gap_at_start_days": 6252,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "SPLS",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2008-01-02",
+        "2017-09-12"
+      ],
+      "actual_window": [
+        "2026-01-16",
+        "2026-07-02"
+      ],
+      "gap_at_start_days": 6589,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "STI",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2008-01-02",
+        "2019-12-05"
+      ],
+      "actual_window": [
+        "2022-05-02",
+        "2026-07-02"
+      ],
+      "gap_at_start_days": 5234,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "SUN",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2008-01-02",
+        "2012-10-04"
+      ],
+      "actual_window": [
+        "2012-09-20",
+        "2026-07-02"
+      ],
+      "gap_at_start_days": 1723,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "TE",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2008-01-02",
+        "2016-06-27"
+      ],
+      "actual_window": [
+        "2020-01-10",
+        "2026-07-02"
+      ],
+      "gap_at_start_days": 4391,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "TEG",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2008-01-02",
+        "2015-06-24"
+      ],
+      "actual_window": [
+        "2015-12-22",
+        "2022-03-02"
+      ],
+      "gap_at_start_days": 2911,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "UST",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2008-01-02",
+        "2009-01-05"
+      ],
+      "actual_window": [
+        "2010-02-02",
+        "2026-07-02"
+      ],
+      "gap_at_start_days": 762,
+      "gap_at_end_days": 0
+    },
+    {
+      "ticker": "WB",
+      "resolved_via_rename": null,
+      "expected_window": [
+        "2008-01-02",
+        "2008-12-29"
+      ],
+      "actual_window": [
+        "2014-04-17",
+        "2026-07-02"
+      ],
+      "gap_at_start_days": 2297,
+      "gap_at_end_days": 0
+    }
+  ]
+}
