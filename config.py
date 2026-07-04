@@ -11,6 +11,18 @@ import os
 # ----------------------------------------------------------------------------
 SP500_SOURCE_URL = "https://raw.githubusercontent.com/datasets/s-and-p-500-companies/main/data/constituents.csv"
 
+# Point-in-time S&P 500 membership (for backtesting only — avoids survivorship
+# bias from applying today's constituent list to historical dates). See
+# sp500_point_in_time.py for the full rationale and data-quality caveats.
+SP500_HISTORICAL_URL = (
+    "https://raw.githubusercontent.com/fja05680/sp500/master/"
+    "S%26P%20500%20Historical%20Components%20%26%20Changes.csv"
+)
+SP500_CHANGES_SINCE_URL = (
+    "https://raw.githubusercontent.com/fja05680/sp500/master/sp500_changes_since_2019.csv"
+)
+SP500_TIMELINE_CACHE_PATH = "cache/sp500_timeline_cache.json"
+
 # Official NSE archive (requires browser-like headers; NSE blocks bare requests)
 NSE500_SOURCE_URL = "https://nsearchives.nseindia.com/content/indices/ind_nifty500list.csv"
 NSE_HOME_URL = "https://www.nseindia.com"  # visited first to obtain cookies
