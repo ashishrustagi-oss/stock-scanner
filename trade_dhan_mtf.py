@@ -412,6 +412,11 @@ def run_trade_cycle() -> None:
             continue
 
         cond = check_mtf_conditions(symbol)
+        time.sleep(0.3)  # throttle — Dhan Data APIs cap at 5 req/sec; each
+                          # check makes 2-3 calls (weekly+daily+intraday), so
+                          # without this, scanning many candidates back to
+                          # back can silently hit the rate limit and look
+                          # identical to a real data-fetch failure
 
         if cond.get("error"):
             logger.debug("trade_mtf: %s error: %s", symbol, cond["error"])

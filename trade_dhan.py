@@ -461,6 +461,11 @@ def run_trade_cycle() -> None:
                 continue
 
             st = check_supertrend_conditions(symbol)
+            time.sleep(0.3)  # throttle — Dhan Data APIs cap at 5 req/sec;
+                              # each check makes 2 calls (weekly+daily), so
+                              # without this, scanning many candidates back
+                              # to back can silently hit the rate limit and
+                              # look identical to a real data-fetch failure
             if st.get("error"):
                 _error_counts[st["error"]] = _error_counts.get(st["error"], 0) + 1
                 continue
