@@ -493,6 +493,66 @@ assert abs(
     OBV_SUBWEIGHT_SLOPE_20D + OBV_SUBWEIGHT_SLOPE_50D + OBV_SUBWEIGHT_52W_RANGE - 1.0
 ) < 1e-9, "OBV sub-weights must sum to 1.0"
 
+# ----------------------------------------------------------------------------
+# US GARP COMPOSITE SCORE (Growth At a Reasonable Price) — separate from the
+# NSE/base composite above. See README_US.md for the full design rationale.
+# Growth leads (45%), Value and technical timing are guardrails/triggers,
+# not hard gates — no disqualifying thresholds, by design (see README_US.md
+# "No hard disqualifying gates initially" — backtest evidence decides that,
+# not an assumption made upfront).
+# ----------------------------------------------------------------------------
+US_WEIGHT_GROWTH     = 45
+US_WEIGHT_VALUE       = 25
+US_WEIGHT_QUALITY     = 15
+US_WEIGHT_TECHNICAL   = 15
+
+assert US_WEIGHT_GROWTH + US_WEIGHT_VALUE + US_WEIGHT_QUALITY + US_WEIGHT_TECHNICAL == 100
+
+# Growth sub-weights. Estimate-revisions data isn't built yet (see
+# README_US.md build status) — its sub-weight is defined here so it's a
+# one-line change to activate once that data source exists, but
+# score_growth_us() currently redistributes it across the other two
+# whenever revisions data is unavailable for a stock, rather than silently
+# scoring that stock lower for a component nobody's data source provides yet.
+US_GROWTH_SUBWEIGHT_SALES_CAGR   = 0.40
+US_GROWTH_SUBWEIGHT_PROFIT_CAGR  = 0.35
+US_GROWTH_SUBWEIGHT_REVISIONS    = 0.25   # inactive until estimate-revisions data is built
+
+assert abs(
+    US_GROWTH_SUBWEIGHT_SALES_CAGR + US_GROWTH_SUBWEIGHT_PROFIT_CAGR + US_GROWTH_SUBWEIGHT_REVISIONS - 1.0
+) < 1e-9, "US Growth sub-weights must sum to 1.0"
+
+# Value sub-weights. Both PEG and EV/EBITDA are "lower is better" — scored
+# as inverted percentile ranks. EV/EBITDA is ranked WITHIN SECTOR (not
+# against the whole universe) since "cheap" means different things in
+# software vs. utilities — see score_value_us() in scoring_us.py.
+US_VALUE_SUBWEIGHT_PEG        = 0.50
+US_VALUE_SUBWEIGHT_EV_EBITDA  = 0.50
+
+assert abs(US_VALUE_SUBWEIGHT_PEG + US_VALUE_SUBWEIGHT_EV_EBITDA - 1.0) < 1e-9
+
+# Quality sub-weights
+US_QUALITY_SUBWEIGHT_FCF_TREND       = 0.40
+US_QUALITY_SUBWEIGHT_DEBT_EQUITY     = 0.30   # reuses the existing debt_equity field
+US_QUALITY_SUBWEIGHT_MARGIN_TREND    = 0.30   # blends gross + operating margin trend equally
+
+assert abs(
+    US_QUALITY_SUBWEIGHT_FCF_TREND + US_QUALITY_SUBWEIGHT_DEBT_EQUITY + US_QUALITY_SUBWEIGHT_MARGIN_TREND - 1.0
+) < 1e-9
+
+# Technical timing sub-weights — deliberately simpler than the NSE Trend
+# bucket (no fast Supertrend, no EMA20): this is a weeks-to-months hold, not
+# a swing setup, so only higher-timeframe trend + leadership signals apply.
+US_TECHNICAL_SUBWEIGHT_SUPERTREND_WEEKLY = 0.40
+US_TECHNICAL_SUBWEIGHT_SUPERTREND_DAILY  = 0.30
+US_TECHNICAL_SUBWEIGHT_RS                = 0.20
+US_TECHNICAL_SUBWEIGHT_OBV               = 0.10
+
+assert abs(
+    US_TECHNICAL_SUBWEIGHT_SUPERTREND_WEEKLY + US_TECHNICAL_SUBWEIGHT_SUPERTREND_DAILY
+    + US_TECHNICAL_SUBWEIGHT_RS + US_TECHNICAL_SUBWEIGHT_OBV - 1.0
+) < 1e-9
+
 # Sub-weights within the "Weekly MACD" bucket
 # Now includes the binary positive/negative flag alongside the ranked histogram
 MACD_WEEKLY_SUBWEIGHT_RANKED   = 0.60   # cross-sectional rank of histogram magnitude
