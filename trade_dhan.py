@@ -403,6 +403,7 @@ def run_trade_cycle() -> None:
             entry_price = pos["entry_price"]
             qty         = pos["qty"]
             ltp = _dhan_data.get_ltp(symbol) or holdings.get(symbol, {}).get("ltp")
+            time.sleep(0.2)  # throttle — same rate-limit protection as the entry loop
             if ltp is None:
                 continue
 
@@ -457,6 +458,11 @@ def run_trade_cycle() -> None:
             if symbol in state.get(other_strat, {}):
                 continue
 
+            time.sleep(0.3)  # throttle BEFORE get_ltp too — this call was
+                              # firing with zero delay and hitting Dhan's
+                              # rate limit on 2026-07-07, causing every
+                              # candidate after the first to get a garbled
+                              # (rate-limited) response instead of a price
             ltp = _dhan_data.get_ltp(symbol)
             if ltp is None:
                 _error_counts["no_ltp"] = _error_counts.get("no_ltp", 0) + 1

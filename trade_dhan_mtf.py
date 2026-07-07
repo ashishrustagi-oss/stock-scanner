@@ -357,6 +357,7 @@ def run_trade_cycle() -> None:
         qty         = pos["qty"]
 
         ltp = _dhan_data.get_ltp(symbol)
+        time.sleep(0.2)  # throttle — rate-limit protection
         if ltp is None:
             continue
 
@@ -410,6 +411,8 @@ def run_trade_cycle() -> None:
         if len(positions) >= MAX_POSITIONS:
             break
 
+        time.sleep(0.3)  # throttle BEFORE get_ltp — was firing with zero
+                          # delay and hitting Dhan's rate limit
         ltp = _dhan_data.get_ltp(symbol)
         if ltp is None:
             _error_counts["no_ltp"] = _error_counts.get("no_ltp", 0) + 1

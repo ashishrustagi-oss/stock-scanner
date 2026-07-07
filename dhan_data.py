@@ -202,8 +202,29 @@ class DhanData:
             return None
         try:
             resp = self.client.ticker_data({"NSE_EQ": [int(sid)]})
-            data = resp.get("data", {}).get("NSE_EQ", {})
-            item = data.get(str(sid)) or data.get(sid) or {}
+
+            # Defensive: under load, Dhan's API can return a plain error
+            # string (e.g. a rate-limit message) instead of the expected
+            # JSON structure. Catch that explicitly rather than letting
+            # `.get()` on a string raise a confusing AttributeError.
+            if not isinstance(resp, dict):
+                logger.warning(
+                    "dhan_data: get_ltp(%s) — non-dict response (likely rate-limited): %r",
+                    symbol, resp,
+                )
+                return None
+
+            # The actual response is double-nested: resp["data"]["data"]["NSE_EQ"],
+            # not resp["data"]["NSE_EQ"] as originally assumed. Try the real
+            # (nested) shape first, fall back to the flatter one in case the
+            # API's response shape varies by SDK version.
+            outer_data = resp.get("data", {})
+            if isinstance(outer_data, dict) and "data" in outer_data:
+                nse_eq = outer_data.get("data", {}).get("NSE_EQ", {})
+            else:
+                nse_eq = outer_data.get("NSE_EQ", {}) if isinstance(outer_data, dict) else {}
+
+            item = nse_eq.get(str(sid)) or nse_eq.get(sid) or {}
             ltp = item.get("last_price") or item.get("LTP")
             if not ltp:
                 global _ltp_debug_logged
