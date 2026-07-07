@@ -28,10 +28,11 @@ import logging
 import math
 import os
 import time
+import urllib.request
 
 import pandas as pd
 import requests
-from dhanhq import DhanContext, dhanhq
+from dhanhq import DhanContext, DhanLogin, dhanhq
 
 import config
 from dhan_data import DhanData
@@ -71,10 +72,35 @@ def get_dhan_client() -> dhanhq | None:
         return None
     try:
         ctx = DhanContext(client_id, access_token)
-        return dhanhq(ctx)
+        client = dhanhq(ctx)
+        _ensure_static_ip(client_id, access_token)
+        return client
     except Exception as exc:
         logger.error("trade_mtf: client init failed: %s", exc)
         return None
+
+
+def _ensure_static_ip(client_id: str, access_token: str) -> None:
+    """
+    Whitelists THIS job's own runner IP with Dhan, immediately before any
+    order might be placed — see trade_dhan.py for the full explanation.
+    GitHub Actions gives every separate workflow job a different public
+    IP, so the IP whitelisted by dhan_token_refresh.py's separate job
+    never matches this job's IP. Non-fatal on failure.
+    """
+    try:
+        with urllib.request.urlopen("https://api.ipify.org", timeout=10) as resp:
+            runner_ip = resp.read().decode().strip()
+    except Exception as exc:
+        logger.warning("trade_mtf: could not determine runner IP: %s", exc)
+        return
+
+    try:
+        dhan_login = DhanLogin(client_id)
+        dhan_login.set_ip(access_token, runner_ip, "PRIMARY", client_id)
+        logger.info("trade_mtf: static IP set for this job's runner (%s)", runner_ip)
+    except Exception as exc:
+        logger.warning("trade_mtf: static IP set failed (non-fatal): %s", exc)
 
 
 # ---------------------------------------------------------------------------

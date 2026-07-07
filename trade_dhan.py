@@ -5,7 +5,14 @@ Identical strategy logic to trade.py (M-stock version) but uses
 Dhan's SDK for order placement. Key advantages over M-stock:
   - No daily login/TOTP in this module — access token is pre-generated
     by dhan_token_refresh.py which runs at 8:45 AM IST daily
-  - IP is whitelisted automatically by dhan_token_refresh.py
+  - This module whitelists ITS OWN runner's IP right before placing any
+    order (see _ensure_static_ip below) — GitHub Actions gives every
+    separate workflow job a different public IP, so the IP whitelisted
+    by dhan_token_refresh.py's job never matches this job's IP. Every
+    order placement failed with DH-905 "Invalid IP" until this was
+    added — discovered 2026-07-07 via the first real order-confirmation
+    check (previously, place_order()'s response was never inspected, so
+    this failure mode was invisible).
   - Runs fully from GitHub Actions — no PC needed during market hours
 
 Strategy:
@@ -27,10 +34,11 @@ import logging
 import math
 import os
 import time
+import urllib.request
 
 import pandas as pd
 import requests
-from dhanhq import DhanContext, dhanhq
+from dhanhq import DhanContext, DhanLogin, dhanhq
 from dhan_data import DhanData
 
 import config
@@ -82,10 +90,42 @@ def get_dhan_client() -> dhanhq | None:
         ctx = DhanContext(client_id, access_token)
         client = dhanhq(ctx)
         logger.info("trade_dhan: Dhan client initialised")
+        _ensure_static_ip(client_id, access_token)
         return client
     except Exception as exc:
         logger.error("trade_dhan: client init failed: %s", exc)
         return None
+
+
+def _ensure_static_ip(client_id: str, access_token: str) -> None:
+    """
+    Whitelists THIS job's own runner IP with Dhan, immediately before any
+    order might be placed. GitHub Actions gives every separate workflow
+    job a different public IP — the IP whitelisted by dhan_token_refresh.py
+    (a different job, different runner) does NOT match this job's IP, so
+    every order placement failed with DH-905 "Invalid IP" until this was
+    added. Setting it here, in the same job that will actually call
+    place_order(), guarantees the IP matches by construction, since a
+    single GitHub Actions job keeps one IP for its whole runtime.
+
+    Non-fatal on failure — data-only cycles (no entry signal this run)
+    don't need this to succeed, only order placement does, and place_order()
+    will surface a clear DH-905 error via the order-confirmation check if
+    this step didn't work.
+    """
+    try:
+        with urllib.request.urlopen("https://api.ipify.org", timeout=10) as resp:
+            runner_ip = resp.read().decode().strip()
+    except Exception as exc:
+        logger.warning("trade_dhan: could not determine runner IP: %s", exc)
+        return
+
+    try:
+        dhan_login = DhanLogin(client_id)
+        dhan_login.set_ip(access_token, runner_ip, "PRIMARY", client_id)
+        logger.info("trade_dhan: static IP set for this job's runner (%s)", runner_ip)
+    except Exception as exc:
+        logger.warning("trade_dhan: static IP set failed (non-fatal): %s", exc)
 
 
 # ---------------------------------------------------------------------------
