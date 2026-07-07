@@ -33,6 +33,9 @@ logger = logging.getLogger(__name__)
 _SECURITY_ID_CACHE: dict[str, str] = {}
 
 
+_ltp_debug_logged = False
+
+
 class DhanData:
     """
     Data fetcher using Dhan API.
@@ -195,13 +198,25 @@ class DhanData:
         """Returns last traded price for a single NSE symbol."""
         sid = self.get_security_id(symbol)
         if not sid:
+            logger.warning("dhan_data: get_ltp(%s) — no security_id found", symbol)
             return None
         try:
             resp = self.client.ticker_data({"NSE_EQ": [int(sid)]})
             data = resp.get("data", {}).get("NSE_EQ", {})
             item = data.get(str(sid)) or data.get(sid) or {}
             ltp = item.get("last_price") or item.get("LTP")
+            if not ltp:
+                global _ltp_debug_logged
+                if not _ltp_debug_logged:
+                    logger.warning(
+                        "dhan_data: get_ltp(%s) — no price in response. sid=%s raw_resp=%s "
+                        "(further no-price failures this run will log a short message only)",
+                        symbol, sid, resp,
+                    )
+                    _ltp_debug_logged = True
+                else:
+                    logger.warning("dhan_data: get_ltp(%s) — no price in response (sid=%s)", symbol, sid)
             return float(ltp) if ltp else None
         except Exception as exc:
-            logger.debug("dhan_data: get_ltp(%s) failed: %s", symbol, exc)
+            logger.warning("dhan_data: get_ltp(%s) failed: %s", symbol, exc)
             return None
