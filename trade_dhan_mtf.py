@@ -289,6 +289,33 @@ def _send_alert(message: str) -> None:
         logger.debug("trade_mtf: Telegram failed: %s", exc)
 
 
+def _order_confirmed(resp) -> tuple[bool, str | None, str | None]:
+    """
+    Checks whether Dhan's place_order() response actually confirms a fill,
+    rather than inferring success from "no Python exception was raised."
+    Dhan returns normal (non-exception) responses for REJECTED orders too
+    — {"status": "failure", "remarks": {...}} — the same shape used
+    elsewhere in this codebase (e.g. the DH-902 pattern), so it must be
+    checked explicitly.
+    Returns (confirmed: bool, order_id: str|None, failure_reason: str|None).
+    """
+    if not isinstance(resp, dict):
+        return False, None, f"non-dict response: {resp!r}"
+    order_id = resp.get("data", {}).get("orderId") if isinstance(resp.get("data"), dict) else None
+    if resp.get("status") == "success" and order_id:
+        return True, order_id, None
+    return False, None, str(resp.get("remarks") or resp)
+
+
+def _order_failed_alert(action: str, symbol: str, qty: int, price: float, reason: str) -> None:
+    _send_alert(
+        f"🔴 *MTF ORDER FAILED — {symbol}*\n"
+        f"Attempted: {action} {qty} shares @ ~₹{price:,.2f}\n"
+        f"Reason   : {reason}\n"
+        f"Position was NOT updated — Dhan rejected the order."
+    )
+
+
 def _entry_alert(symbol: str, qty: int, price: float, cond: dict) -> None:
     w10 = "✅" if cond.get("weekly_10_3_bullish") else "❌"
     w2  = "✅" if cond.get("weekly_2_1_bullish")  else "❌"
@@ -365,12 +392,23 @@ def run_trade_cycle() -> None:
         if ltp <= entry_price * (1 - STOP_LOSS_PCT):
             logger.info("trade_mtf: STOP LOSS %s", symbol)
             try:
-                place_order(symbol, qty, "SELL", client)
+                resp = place_order(symbol, qty, "SELL", client)
+                confirmed, _, reason = _order_confirmed(resp)
             except Exception as exc:
                 logger.error("trade_mtf: SELL failed %s: %s", symbol, exc)
-            _exit_alert(symbol, qty, entry_price, ltp,
-                        f"Hard stop-loss ({STOP_LOSS_PCT*100:.0f}%)")
-            del positions[symbol]
+                confirmed, reason = False, str(exc)
+
+            if confirmed:
+                _exit_alert(symbol, qty, entry_price, ltp,
+                            f"Hard stop-loss ({STOP_LOSS_PCT*100:.0f}%)")
+                del positions[symbol]
+            else:
+                # Do NOT delete from tracking — the position is still real
+                # and open on the broker side; losing track of it here
+                # would mean no further stop-loss/exit checks ever run
+                # against it again.
+                logger.error("trade_mtf: SELL REJECTED %s, keeping position tracked: %s", symbol, reason)
+                _order_failed_alert("SELL", symbol, qty, ltp, reason)
             continue
 
         # Daily ST(2,1) bearish crossover — EXIT signal
@@ -378,24 +416,38 @@ def run_trade_cycle() -> None:
         if cond.get("daily_2_1_cross_down"):
             logger.info("trade_mtf: D-ST(2,1) EXIT %s", symbol)
             try:
-                place_order(symbol, qty, "SELL", client)
+                resp = place_order(symbol, qty, "SELL", client)
+                confirmed, _, reason = _order_confirmed(resp)
             except Exception as exc:
                 logger.error("trade_mtf: SELL failed %s: %s", symbol, exc)
-            _exit_alert(symbol, qty, entry_price, ltp,
-                        "Daily ST(2,1) bearish crossover")
-            del positions[symbol]
+                confirmed, reason = False, str(exc)
+
+            if confirmed:
+                _exit_alert(symbol, qty, entry_price, ltp,
+                            "Daily ST(2,1) bearish crossover")
+                del positions[symbol]
+            else:
+                logger.error("trade_mtf: SELL REJECTED %s, keeping position tracked: %s", symbol, reason)
+                _order_failed_alert("SELL", symbol, qty, ltp, reason)
             continue
 
         # Dropped off scanner list
         if symbol not in qualified:
             logger.info("trade_mtf: %s dropped off qualified list", symbol)
             try:
-                place_order(symbol, qty, "SELL", client)
+                resp = place_order(symbol, qty, "SELL", client)
+                confirmed, _, reason = _order_confirmed(resp)
             except Exception as exc:
                 logger.error("trade_mtf: SELL failed %s: %s", symbol, exc)
-            _exit_alert(symbol, qty, entry_price, ltp,
-                        "Dropped off scanner qualified list")
-            del positions[symbol]
+                confirmed, reason = False, str(exc)
+
+            if confirmed:
+                _exit_alert(symbol, qty, entry_price, ltp,
+                            "Dropped off scanner qualified list")
+                del positions[symbol]
+            else:
+                logger.error("trade_mtf: SELL REJECTED %s, keeping position tracked: %s", symbol, reason)
+                _order_failed_alert("SELL", symbol, qty, ltp, reason)
 
     # --- Check entries ---
     if len(positions) >= MAX_POSITIONS:
@@ -447,15 +499,23 @@ def run_trade_cycle() -> None:
 
         logger.info("trade_mtf: ENTRY %s qty=%d @ Rs %.2f", symbol, qty, ltp)
         try:
-            place_order(symbol, qty, "BUY", client)
-            positions[symbol] = {
-                "qty":         qty,
-                "entry_price": ltp,
-                "entry_date":  datetime.date.today().isoformat(),
-            }
-            _entry_alert(symbol, qty, ltp, cond)
+            resp = place_order(symbol, qty, "BUY", client)
+            confirmed, order_id, reason = _order_confirmed(resp)
+            if confirmed:
+                positions[symbol] = {
+                    "qty":         qty,
+                    "entry_price": ltp,
+                    "entry_date":  datetime.date.today().isoformat(),
+                    "order_id":    order_id,
+                }
+                _entry_alert(symbol, qty, ltp, cond)
+                logger.info("trade_mtf: order CONFIRMED %s orderId=%s", symbol, order_id)
+            else:
+                logger.error("trade_mtf: order REJECTED %s — full response: %s", symbol, resp)
+                _order_failed_alert("BUY", symbol, qty, ltp, reason)
         except Exception as exc:
             logger.error("trade_mtf: BUY failed %s: %s", symbol, exc)
+            _order_failed_alert("BUY", symbol, qty, ltp, str(exc))
 
         time.sleep(0.5)
 

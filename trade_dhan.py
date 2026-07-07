@@ -339,6 +339,41 @@ def _entry_alert(symbol: str, strategy: str, qty: int, price: float, st: dict) -
     )
 
 
+def _order_confirmed(resp) -> tuple[bool, str | None, str | None]:
+    """
+    Checks whether Dhan's place_order() response actually confirms a fill,
+    rather than inferring success from "no Python exception was raised."
+    Dhan returns normal (non-exception) responses for REJECTED orders too
+    — {"status": "failure", "remarks": {...}} — same shape as the DH-902
+    pattern seen elsewhere in this codebase, so it must be checked
+    explicitly. Returns (confirmed, order_id, failure_reason).
+    """
+    if not isinstance(resp, dict):
+        return False, None, f"non-dict response: {resp!r}"
+    order_id = resp.get("data", {}).get("orderId") if isinstance(resp.get("data"), dict) else None
+    if resp.get("status") == "success" and order_id:
+        return True, order_id, None
+    return False, None, str(resp.get("remarks") or resp)
+
+
+def _order_failed_alert(symbol: str, qty: int, price: float, reason: str) -> None:
+    """
+    Sent when place_order()'s response indicates Dhan actually REJECTED the
+    order — as opposed to a Python exception (network error etc.), which
+    was the only case previously caught. Without this, a rejected order
+    (bad security, insufficient funds, market-hours edge case, etc.) would
+    silently look identical to a successful one: the code would still mark
+    the position open and send the success alert regardless of what Dhan's
+    API actually said.
+    """
+    _send_alert(
+        f"🔴 *ORDER FAILED — {symbol}*\n"
+        f"Attempted: BUY {qty} shares @ ~₹{price:,.2f}\n"
+        f"Reason   : {reason}\n"
+        f"Position was NOT recorded as open — Dhan rejected the order."
+    )
+
+
 def _exit_alert(symbol: str, strategy: str, qty: int,
                 entry_price: float, exit_price: float, reason: str) -> None:
     pnl     = (exit_price - entry_price) * qty
@@ -411,12 +446,19 @@ def run_trade_cycle() -> None:
             if ltp <= entry_price * (1 - STOP_LOSS_PCT):
                 logger.info("trade_dhan: STOP LOSS %s", symbol)
                 try:
-                    place_order(symbol, qty, "SELL", client)
+                    resp = place_order(symbol, qty, "SELL", client)
+                    confirmed, _, reason = _order_confirmed(resp)
                 except Exception as exc:
                     logger.error("trade_dhan: SELL failed %s: %s", symbol, exc)
-                _exit_alert(symbol, strat["label"], qty, entry_price, ltp,
-                            f"Hard stop-loss ({STOP_LOSS_PCT*100:.0f}%)")
-                del open_positions[symbol]
+                    confirmed, reason = False, str(exc)
+
+                if confirmed:
+                    _exit_alert(symbol, strat["label"], qty, entry_price, ltp,
+                                f"Hard stop-loss ({STOP_LOSS_PCT*100:.0f}%)")
+                    del open_positions[symbol]
+                else:
+                    logger.error("trade_dhan: SELL REJECTED %s, keeping position tracked: %s", symbol, reason)
+                    _order_failed_alert(symbol, qty, ltp, reason)
                 continue
 
             # ST(10,3) bearish crossover
@@ -424,24 +466,38 @@ def run_trade_cycle() -> None:
             if st.get("daily_10_3_cross_down"):
                 logger.info("trade_dhan: ST(10,3) EXIT %s", symbol)
                 try:
-                    place_order(symbol, qty, "SELL", client)
+                    resp = place_order(symbol, qty, "SELL", client)
+                    confirmed, _, reason = _order_confirmed(resp)
                 except Exception as exc:
                     logger.error("trade_dhan: SELL failed %s: %s", symbol, exc)
-                _exit_alert(symbol, strat["label"], qty, entry_price, ltp,
-                            "Daily ST(10,3) bearish crossover")
-                del open_positions[symbol]
+                    confirmed, reason = False, str(exc)
+
+                if confirmed:
+                    _exit_alert(symbol, strat["label"], qty, entry_price, ltp,
+                                "Daily ST(10,3) bearish crossover")
+                    del open_positions[symbol]
+                else:
+                    logger.error("trade_dhan: SELL REJECTED %s, keeping position tracked: %s", symbol, reason)
+                    _order_failed_alert(symbol, qty, ltp, reason)
                 continue
 
             # Dropped off scanner list
             if symbol not in qualified_set:
                 logger.info("trade_dhan: %s dropped off qualified list", symbol)
                 try:
-                    place_order(symbol, qty, "SELL", client)
+                    resp = place_order(symbol, qty, "SELL", client)
+                    confirmed, _, reason = _order_confirmed(resp)
                 except Exception as exc:
                     logger.error("trade_dhan: SELL failed %s: %s", symbol, exc)
-                _exit_alert(symbol, strat["label"], qty, entry_price, ltp,
-                            "Dropped off scanner qualified list")
-                del open_positions[symbol]
+                    confirmed, reason = False, str(exc)
+
+                if confirmed:
+                    _exit_alert(symbol, strat["label"], qty, entry_price, ltp,
+                                "Dropped off scanner qualified list")
+                    del open_positions[symbol]
+                else:
+                    logger.error("trade_dhan: SELL REJECTED %s, keeping position tracked: %s", symbol, reason)
+                    _order_failed_alert(symbol, qty, ltp, reason)
 
         # --- Entries ---
         if len(open_positions) >= MAX_POSITIONS:
@@ -490,15 +546,37 @@ def run_trade_cycle() -> None:
 
             logger.info("trade_dhan: ENTRY %s qty=%d @ Rs %.2f", symbol, qty, ltp)
             try:
-                place_order(symbol, qty, "BUY", client)
-                open_positions[symbol] = {
-                    "qty": qty, "entry_price": ltp,
-                    "entry_date": datetime.date.today().isoformat(),
-                    "strategy": strat_key,
-                }
-                _entry_alert(symbol, strat["label"], qty, ltp, st)
+                resp = place_order(symbol, qty, "BUY", client)
+
+                # CRITICAL CHECK — previously this response was discarded
+                # entirely, so a Dhan-side order REJECTION (e.g. insufficient
+                # funds, invalid params) looked identical to a real fill:
+                # the code would still mark the position open and send the
+                # success alert. Dhan's API returns normal (non-exception)
+                # responses for rejections too — {"status": "failure", ...} —
+                # same shape as the DH-902 pattern seen elsewhere in this
+                # codebase, so it must be checked explicitly, not inferred
+                # from the absence of a Python exception.
+                order_id = None
+                if isinstance(resp, dict):
+                    order_id = resp.get("data", {}).get("orderId") if isinstance(resp.get("data"), dict) else None
+
+                if resp.get("status") == "success" and order_id:
+                    open_positions[symbol] = {
+                        "qty": qty, "entry_price": ltp,
+                        "entry_date": datetime.date.today().isoformat(),
+                        "strategy": strat_key,
+                        "order_id": order_id,
+                    }
+                    _entry_alert(symbol, strat["label"], qty, ltp, st)
+                    logger.info("trade_dhan: order CONFIRMED %s orderId=%s", symbol, order_id)
+                else:
+                    reason = resp.get("remarks") if isinstance(resp, dict) else str(resp)
+                    logger.error("trade_dhan: order REJECTED %s — full response: %s", symbol, resp)
+                    _order_failed_alert(symbol, qty, ltp, str(reason))
             except Exception as exc:
                 logger.error("trade_dhan: BUY failed %s: %s", symbol, exc)
+                _order_failed_alert(symbol, qty, ltp, str(exc))
             time.sleep(0.5)
 
         if _error_counts:
