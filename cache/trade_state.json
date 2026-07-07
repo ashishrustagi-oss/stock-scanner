@@ -1,12 +1,5 @@
 {
-  "elite": {
-    "WELCORP": {
-      "qty": 6,
-      "entry_price": 1532.9,
-      "entry_date": "2026-07-07",
-      "strategy": "elite"
-    }
-  },
+  "elite": {},
   "combo": {},
   "mtf": {}
 }
