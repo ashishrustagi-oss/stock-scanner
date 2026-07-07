@@ -323,7 +323,7 @@ EARNINGS_ACCELERATING_TAB_TOP_N = 30             # how many stocks the EARNINGS_
 # Widen these only after confirming a smaller run completes in reasonable
 # time. Run manually via backtest_workflow.yml, never as part of daily scan.
 # ════════════════════════════════════════════════════════════════════════════
-BACKTEST_UNIVERSE = "NSE500"          # "NSE500", "SP500", or "NSE_SmallMicro" — one at a time
+BACKTEST_UNIVERSE = "SP500_PointInTime"          # "NSE500", "SP500", or "NSE_SmallMicro" — one at a time
 # Widened 300->None (full NSE500, ~500 tickers) and 3y->5y lookback
 # (26-06-2026), specifically for a genuine SECOND confirming run on the OBV
 # Divergence Decaying signal — its first two "runs" turned out to be the
@@ -363,8 +363,8 @@ BACKTEST_LOOKBACK_YEARS = 5           # how far back snapshot dates go; widened 
 # NSE_SmallMicro backtest elsewhere in this file applies here too, just on
 # the TIME axis instead of the universe-membership axis).
 BACKTEST_DATE_RANGE_MODE = True      # False = normal "N years back from today" mode (existing behavior, unchanged)
-BACKTEST_DATE_RANGE_START = "2020-01-01"   # COVID crash window: captures the Jan 2020 peak, the Feb-Apr crash, and into the recovery
-BACKTEST_DATE_RANGE_END = "2021-01-31"
+BACKTEST_DATE_RANGE_START = "2008-01-01"   # COVID crash window: captures the Jan 2020 peak, the Feb-Apr crash, and into the recovery
+BACKTEST_DATE_RANGE_END = "2015-01-01"
 # Alternative — 2015-16 correction (milder, slower bear phase, different
 # character from COVID's sharp shock): BACKTEST_DATE_RANGE_START =
 # "2015-03-01", BACKTEST_DATE_RANGE_END = "2017-03-31"

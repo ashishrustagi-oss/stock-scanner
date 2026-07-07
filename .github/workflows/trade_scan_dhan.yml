@@ -3,38 +3,22 @@ name: Trade Scan Dhan (Intraday)
 on:
   workflow_dispatch: {}
   schedule:
-    # Target: ~9:15 AM-3:45 PM IST every 15 min. Deliberately offset +6 min
-    # off the round :00/:15/:30/:45 marks — GitHub's scheduler queues
-    # heaviest right on those marks (every repo on GitHub fires at once),
-    # which was causing triggers to be delayed by 30-90+ min or dropped
-    # outright. Off-round minutes queue far more reliably.
-    - cron: "51 3 * * 1-5"
-    - cron: "6 4 * * 1-5"
-    - cron: "21 4 * * 1-5"
-    - cron: "36 4 * * 1-5"
-    - cron: "51 4 * * 1-5"
-    - cron: "6 5 * * 1-5"
-    - cron: "21 5 * * 1-5"
-    - cron: "36 5 * * 1-5"
-    - cron: "51 5 * * 1-5"
-    - cron: "6 6 * * 1-5"
-    - cron: "21 6 * * 1-5"
-    - cron: "36 6 * * 1-5"
-    - cron: "51 6 * * 1-5"
-    - cron: "6 7 * * 1-5"
-    - cron: "21 7 * * 1-5"
-    - cron: "36 7 * * 1-5"
-    - cron: "51 7 * * 1-5"
-    - cron: "6 8 * * 1-5"
-    - cron: "21 8 * * 1-5"
-    - cron: "36 8 * * 1-5"
-    - cron: "51 8 * * 1-5"
-    - cron: "6 9 * * 1-5"
-    - cron: "21 9 * * 1-5"
-    - cron: "36 9 * * 1-5"
-    - cron: "51 9 * * 1-5"
-    - cron: "6 10 * * 1-5"
-    - cron: "21 10 * * 1-5"
+    # SINGLE cron entry, deliberately — GitHub's own scheduling behavior
+    # gets LESS reliable with more separate `- cron:` lines in one workflow
+    # (each is tracked as an independent trigger competing in the queue).
+    # The previous version here had 27 separate entries (one per 15-min
+    # slot) and, despite an earlier off-round-minute fix, still missed
+    # 11+ consecutive triggers on 2026-07-07 and delayed evening runs by
+    # 3-4 hours on 2026-07-06 — a single entry is the more robust design.
+    #
+    # Fires every 13 min (odd/non-round step, same anti-congestion idea
+    # as before) across UTC hours 3-11, covering 9:15 AM-3:45 PM IST with
+    # margin on both sides. market_hours.py's is_within_trading_window()
+    # guard (already in trade_dhan.py / trade_dhan_mtf.py / watchlist.py)
+    # makes any run outside the real 9:15-15:45 IST window an instant,
+    # harmless no-op — so firing a bit before/after market hours costs
+    # nothing but a few extra seconds of runner time.
+    - cron: "*/13 3-11 * * 1-5"
 
 permissions:
   contents: write
