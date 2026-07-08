@@ -1,5 +1,12 @@
 {
   "elite": {},
   "combo": {},
-  "mtf": {}
+  "mtf": {
+    "WELCORP": {
+      "qty": 12,
+      "entry_price": 1553.6,
+      "entry_date": "2026-07-08",
+      "order_id": "34126070814304"
+    }
+  }
 }

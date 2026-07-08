@@ -362,7 +362,7 @@ def _send_alert(message: str) -> None:
             timeout=10,
         )
     except Exception as exc:
-        logger.debug("trade_dhan: Telegram failed: %s", exc)
+        logger.warning("trade_dhan: Telegram failed: %s", exc)
 
 
 def _entry_alert(symbol: str, strategy: str, qty: int, price: float, st: dict) -> None:
