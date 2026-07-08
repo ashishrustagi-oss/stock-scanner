@@ -54,26 +54,7 @@ jobs:
           TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
           GOOGLE_SERVICE_ACCOUNT_JSON_PATH: service_account.json
         run: python -c "import watchlist; import logging; logging.basicConfig(level=logging.INFO); watchlist.run_watchlist()"
-
-      - name: Run Dhan trade cycle (Strategy 1 — Supertrend Daily)
-        env:
-          DHAN_CLIENT_ID:    ${{ secrets.DHAN_CLIENT_ID }}
-          DHAN_ACCESS_TOKEN: ${{ secrets.DHAN_ACCESS_TOKEN }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
-          GOOGLE_SHEET_ID:    ${{ secrets.GOOGLE_SHEET_ID }}
-          GOOGLE_SERVICE_ACCOUNT_JSON_PATH: service_account.json
-        run: python trade_dhan.py
-
-      - name: Run Dhan MTF trade cycle (Strategy 2 — Multi-Timeframe)
-        env:
-          DHAN_CLIENT_ID:    ${{ secrets.DHAN_CLIENT_ID }}
-          DHAN_ACCESS_TOKEN: ${{ secrets.DHAN_ACCESS_TOKEN }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
-          GOOGLE_SERVICE_ACCOUNT_JSON_PATH: service_account.json
-        run: python trade_dhan_mtf.py
-
+      
       - name: Remove credentials file
         if: always()
         run: rm -f service_account.json
