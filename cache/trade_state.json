@@ -2,11 +2,17 @@
   "elite": {},
   "combo": {},
   "mtf": {
-    "WELCORP": {
+    "CEMPRO": {
       "qty": 12,
-      "entry_price": 1553.6,
-      "entry_date": "2026-07-08",
-      "order_id": "34126070814304"
+      "entry_price": 1540.6,
+      "entry_date": "2026-07-09",
+      "order_id": "34126070930204"
+    },
+    "IKS": {
+      "qty": 10,
+      "entry_price": 1875.5,
+      "entry_date": "2026-07-09",
+      "order_id": "34126070939104"
     }
   }
 }
