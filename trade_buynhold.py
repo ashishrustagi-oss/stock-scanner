@@ -191,6 +191,9 @@ def compute_qty(price: float) -> int:
 def run_cycle() -> None:
     logger.info("buynhold: === starting cycle %s UTC ===",
                 datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M"))
+    from regime_control import is_active
+    if not is_active("all_time", "trade_buynhold"):
+        return
 
     if not is_within_window():
         logger.info("buynhold: outside 3:00-3:15 PM IST window — skipping")

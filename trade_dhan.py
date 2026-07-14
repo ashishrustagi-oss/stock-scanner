@@ -445,6 +445,9 @@ def _cycle_summary(state: dict) -> None:
 def run_trade_cycle() -> None:
     logger.info("trade_dhan: === starting cycle %s UTC ===",
                 datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M"))
+    from regime_control import is_active
+    if not is_active("bullish", "trade_dhan"):
+        return
 
     # GitHub Actions cron triggers can fire late (queue delays). If this
     # run woke up outside the actual trading window, bail out before any
