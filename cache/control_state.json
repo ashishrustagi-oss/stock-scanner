@@ -1,0 +1,11 @@
+{
+  "master": true,
+  "regimes": {
+    "bullish": true,
+    "bearish": true,
+    "all_time": true,
+    "sideways": true,
+    "high_volatility": true
+  },
+  "last_update_id": 800232207
+}

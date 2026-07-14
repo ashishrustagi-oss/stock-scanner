@@ -1,6 +1,14 @@
 {
   "elite": {},
-  "combo": {},
+  "combo": {
+    "SAREGAMA": {
+      "qty": 20,
+      "entry_price": 493.1,
+      "entry_date": "2026-07-13",
+      "strategy": "combo",
+      "order_id": "321260713383504"
+    }
+  },
   "mtf": {
     "CEMPRO": {
       "qty": 12,
@@ -13,6 +21,24 @@
       "entry_price": 1875.5,
       "entry_date": "2026-07-09",
       "order_id": "34126070939104"
+    },
+    "GLAND": {
+      "qty": 8,
+      "entry_price": 2469.8,
+      "entry_date": "2026-07-13",
+      "order_id": "221260713561704"
+    },
+    "GRANULES": {
+      "qty": 22,
+      "entry_price": 901.2,
+      "entry_date": "2026-07-14",
+      "order_id": "23126071446604"
+    },
+    "WELCORP": {
+      "qty": 11,
+      "entry_price": 1683.2,
+      "entry_date": "2026-07-14",
+      "order_id": "23126071454004"
     }
   }
 }
