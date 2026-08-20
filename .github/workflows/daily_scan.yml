@@ -31,7 +31,20 @@ jobs:
 
       - name: Write Google service account credentials
         run: echo "${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON_B64 }}" | base64 --decode > service_account.json
-
+      - name: DEBUG - inspect credentials (temporary, remove after)
+        run: |
+          python3 -c "
+          import json
+          with open('service_account.json') as f:
+              data = json.load(f)
+          print('client_email:', data.get('client_email'))
+          print('private_key_id:', data.get('private_key_id'))
+          pk = data.get('private_key', '')
+          print('private_key length:', len(pk))
+          print('starts with:', repr(pk[:30]))
+          print('ends with:', repr(pk[-30:]))
+          print('newline count in key:', pk.count(chr(10)))
+          "
       - name: Run scan
         env:
           GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
